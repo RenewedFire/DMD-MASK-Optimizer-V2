@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DMD Forensic Viewer</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="app">
+      <section class="toolbar" aria-label="Viewer controls">
+        <label>
+          Dataset
+          <select id="datasetSelect"></select>
+        </label>
+        <button id="loadButton" type="button">Load</button>
+        <button id="previousButton" type="button" title="Previous frame">Prev</button>
+        <button id="playButton" type="button" title="Play or pause">Play</button>
+        <button id="nextButton" type="button" title="Next frame">Next</button>
+        <label>
+          Frame
+          <input id="frameInput" type="number" min="0" value="0">
+        </label>
+        <button id="jumpButton" type="button">Jump</button>
+        <label>
+          Mode
+          <select id="modeSelect">
+            <option value="exact">Exact 0-3</option>
+            <option value="binary">Binary</option>
+          </select>
+        </label>
+        <label>
+          Components
+          <select id="componentOverlaySelect">
+            <option value="off">Off</option>
+            <option value="pixels">Pixels</option>
+            <option value="boxes">Boxes</option>
+            <option value="both">Pixels + Boxes</option>
+          </select>
+        </label>
+        <label>
+          Candidates
+          <select id="candidateOverlaySelect">
+            <option value="off">Off</option>
+            <option value="1">Threshold 1</option>
+            <option value="2">Threshold 2</option>
+            <option value="3">Threshold 3</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="status" aria-live="polite">
+        <span id="datasetStatus">No dataset loaded</span>
+        <span id="frameStatus"></span>
+        <span id="headerStatus"></span>
+        <span id="componentStatus"></span>
+        <span id="relationshipStatus"></span>
+        <span id="candidateStatus"></span>
+      </section>
+
+      <div class="canvasWrap">
+        <canvas id="dmdCanvas" width="128" height="32" aria-label="128 by 32 DMD frame"></canvas>
+        <canvas id="overlayCanvas" width="128" height="32" aria-label="Raw component overlays"></canvas>
+      </div>
+
+      <section class="relationshipPanel" aria-label="Relationship review">
+        <div class="relationshipControls">
+          <label>
+            Max distance
+            <input id="relationshipDistanceInput" type="number" min="0" max="128" value="6">
+          </label>
+          <label>
+            Limit
+            <input id="relationshipLimitInput" type="number" min="1" max="200" value="25">
+          </label>
+          <label>
+            Component
+            <input id="relationshipComponentInput" type="number" min="0" placeholder="Any">
+          </label>
+        </div>
+        <div id="relationshipSummary" class="relationshipSummary"></div>
+        <div id="relationshipList" class="relationshipList"></div>
+      </section>
+      <p id="errorMessage" class="error" role="alert"></p>
+    </main>
+    <script src="/viewer.js"></script>
+  </body>
+</html>

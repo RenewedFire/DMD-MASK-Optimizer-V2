@@ -1,0 +1,9 @@
+[project]
+name = "dmd-mask-optimizer"
+version = "0.0.0"
+description = "Foundation for DMD mask optimization analysis tooling."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
