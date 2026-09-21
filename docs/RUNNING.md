@@ -100,3 +100,10 @@ Stage 3D adds raw component review controls. The component panel lists raw
 components by area and can filter out tiny components. Select a component row to
 highlight its source island. The `Component IDs` selector can label only the
 selected component or the currently visible component list.
+
+Stage 4 adds spatial region discovery. Regions are conservative groupings built
+from Stage 3 candidate-connection evidence, with singleton regions retained for
+unconnected components. Use the `Regions` selector and the region review panel
+to inspect grouped component membership, bounding boxes, lit area, occupancy,
+and evidence-pair counts. Regions are spatial group proposals only; they are not
+temporal tracks, semantic labels, masks, or final optimization results.

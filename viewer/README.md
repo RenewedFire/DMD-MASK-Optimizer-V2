@@ -40,3 +40,9 @@ Stage 3D adds raw component review controls. Use the component panel to inspect
 raw component IDs, area, bounding boxes, and centroids. Select a component row
 to highlight it on the canvas. Use `Component IDs` to label either the selected
 component or the visible filtered component list.
+
+Stage 4 adds spatial region review. Regions group components through Stage 3
+candidate evidence and keep unconnected components as singleton regions. Use the
+region panel to inspect component membership, bounds, area, occupancy, and
+evidence-pair counts. These are spatial group proposals only, not semantic
+labels, masks, or temporal tracks.

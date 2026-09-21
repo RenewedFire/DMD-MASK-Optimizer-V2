@@ -18,9 +18,11 @@ from src.parsing import FrameParseError, parse_dump_file
 from src.spatial import (
     candidate_boxes_to_payload,
     components_to_payload,
+    discover_spatial_regions,
     find_component_relationships,
     find_lit_components,
     generate_candidate_boxes,
+    regions_to_payload,
     relationships_to_payload,
 )
 
@@ -52,6 +54,7 @@ def frame_to_payload(frame: DmdFrame) -> dict[str, object]:
     components = find_lit_components(frame.binary_pixels)
     relationships = find_component_relationships(components)
     candidate_boxes = generate_candidate_boxes(components, relationships)
+    regions = discover_spatial_regions(components, candidate_boxes)
     return {
         "frame_number": frame.frame_number,
         "header": frame.header,
@@ -62,6 +65,8 @@ def frame_to_payload(frame: DmdFrame) -> dict[str, object]:
         "relationships": relationships_to_payload(relationships),
         "candidate_box_count": len(candidate_boxes),
         "candidate_boxes": candidate_boxes_to_payload(candidate_boxes),
+        "region_count": len(regions),
+        "regions": regions_to_payload(regions),
     }
 
 

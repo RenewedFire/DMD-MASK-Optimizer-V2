@@ -63,7 +63,9 @@ input:hover {
 #relationshipLimitInput,
 #relationshipComponentInput,
 #candidateLimitInput,
-#candidateComponentInput {
+#candidateComponentInput,
+#regionLimitInput,
+#regionMinComponentsInput {
   width: 92px;
 }
 
@@ -148,6 +150,15 @@ input:hover {
   box-shadow: inset 0 0 0 3px #ff4fd8;
 }
 
+.regionBox {
+  border: 3px solid rgba(80, 220, 255, 0.9);
+}
+
+.selectedRegionBox {
+  border: 4px solid #ffffff;
+  box-shadow: inset 0 0 0 3px #50dcff;
+}
+
 .error {
   min-height: 22px;
   color: #ff8a8a;
@@ -156,7 +167,8 @@ input:hover {
 
 .componentPanel,
 .relationshipPanel,
-.candidatePanel {
+.candidatePanel,
+.regionPanel {
   display: grid;
   gap: 10px;
   max-width: min(100%, 1024px);
@@ -164,7 +176,8 @@ input:hover {
 
 .componentControls,
 .relationshipControls,
-.candidateControls {
+.candidateControls,
+.regionControls {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -173,14 +186,22 @@ input:hover {
 
 .componentSummary,
 .relationshipSummary,
-.candidateSummary {
+.candidateSummary,
+.regionSummary {
   color: #d7d7d7;
   font-size: 14px;
 }
 
+.reviewListLabel {
+  color: #f4f4f4;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .componentList,
 .relationshipList,
-.candidateList {
+.candidateList,
+.regionList {
   display: grid;
   gap: 6px;
   max-height: 260px;
@@ -190,7 +211,8 @@ input:hover {
 
 .componentItem,
 .relationshipItem,
-.candidateItem {
+.candidateItem,
+.regionItem {
   display: grid;
   grid-template-columns: minmax(74px, auto) 1fr;
   gap: 8px;
@@ -208,27 +230,32 @@ input:hover {
 .relationshipItem:hover,
 .relationshipItem:focus,
 .candidateItem:hover,
-.candidateItem:focus {
+.candidateItem:focus,
+.regionItem:hover,
+.regionItem:focus {
   border-color: #8b8b8b;
   outline: none;
 }
 
 .componentItem.selected,
 .relationshipItem.selected,
-.candidateItem.selected {
+.candidateItem.selected,
+.regionItem.selected {
   border-color: #ffffff;
   background: #2a2a2a;
 }
 
 .componentPair,
 .relationshipPair,
-.candidatePair {
+.candidatePair,
+.regionPair {
   color: #f4f4f4;
   font-weight: 700;
 }
 
 .componentDetails,
 .relationshipDetails,
-.candidateDetails {
+.candidateDetails,
+.regionDetails {
   color: #cfcfcf;
 }

@@ -71,6 +71,8 @@ class ViewerServerTests(unittest.TestCase):
         self.assertIn("relationships", frame)
         self.assertIn("candidate_box_count", frame)
         self.assertIn("candidate_boxes", frame)
+        self.assertIn("region_count", frame)
+        self.assertIn("regions", frame)
 
     def test_rejects_dataset_path_escape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

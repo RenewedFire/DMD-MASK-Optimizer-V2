@@ -6,10 +6,12 @@ const state = {
   componentOverlay: "off",
   componentIds: "off",
   candidateOverlay: "off",
+  regionOverlay: "off",
   currentFrame: null,
   selectedComponentId: null,
   selectedRelationship: null,
   selectedCandidate: null,
+  selectedRegion: null,
   playing: false,
   timer: null,
 };
@@ -25,12 +27,14 @@ const modeSelect = document.querySelector("#modeSelect");
 const componentOverlaySelect = document.querySelector("#componentOverlaySelect");
 const componentIdSelect = document.querySelector("#componentIdSelect");
 const candidateOverlaySelect = document.querySelector("#candidateOverlaySelect");
+const regionOverlaySelect = document.querySelector("#regionOverlaySelect");
 const datasetStatus = document.querySelector("#datasetStatus");
 const frameStatus = document.querySelector("#frameStatus");
 const headerStatus = document.querySelector("#headerStatus");
 const componentStatus = document.querySelector("#componentStatus");
 const relationshipStatus = document.querySelector("#relationshipStatus");
 const candidateStatus = document.querySelector("#candidateStatus");
+const regionStatus = document.querySelector("#regionStatus");
 const componentLimitInput = document.querySelector("#componentLimitInput");
 const componentMinAreaInput = document.querySelector("#componentMinAreaInput");
 const componentSummary = document.querySelector("#componentSummary");
@@ -44,6 +48,10 @@ const candidateLimitInput = document.querySelector("#candidateLimitInput");
 const candidateComponentInput = document.querySelector("#candidateComponentInput");
 const candidateSummary = document.querySelector("#candidateSummary");
 const candidateList = document.querySelector("#candidateList");
+const regionLimitInput = document.querySelector("#regionLimitInput");
+const regionMinComponentsInput = document.querySelector("#regionMinComponentsInput");
+const regionSummary = document.querySelector("#regionSummary");
+const regionList = document.querySelector("#regionList");
 const errorMessage = document.querySelector("#errorMessage");
 const canvas = document.querySelector("#dmdCanvas");
 const context = canvas.getContext("2d");
@@ -109,6 +117,7 @@ async function loadFrame(frameNumber) {
   state.selectedComponentId = null;
   state.selectedRelationship = null;
   state.selectedCandidate = null;
+  state.selectedRegion = null;
   state.frameNumber = payload.frame.frame_number;
   frameInput.value = state.frameNumber;
   frameStatus.textContent = `Frame ${state.frameNumber + 1} of ${state.frameCount}`;
@@ -116,11 +125,13 @@ async function loadFrame(frameNumber) {
   componentStatus.textContent = `${payload.frame.components.length} raw components`;
   relationshipStatus.textContent = `${payload.frame.relationship_count} relationships`;
   candidateStatus.textContent = `${payload.frame.candidate_box_count} candidate boxes`;
+  regionStatus.textContent = `${payload.frame.region_count ?? 0} regions`;
   state.currentFrame = payload.frame;
   drawFrame(payload.frame);
   renderComponentReview(payload.frame);
   renderRelationshipReview(payload.frame);
   renderCandidateReview(payload.frame);
+  renderRegionReview(payload.frame);
 }
 
 function drawFrame(frame) {
@@ -146,6 +157,7 @@ function drawAnalysisOverlay(frame) {
   labelOverlay.innerHTML = "";
   drawComponentOverlay(frame.components || []);
   drawCandidateOverlay(frame.candidate_boxes || []);
+  drawRegionOverlay(frame.regions || []);
 }
 
 function drawComponentOverlay(components) {
@@ -309,6 +321,29 @@ function drawSelectedCandidate(candidates, components) {
   }
 }
 
+function drawRegionOverlay(regions) {
+  if (state.regionOverlay === "off") {
+    return;
+  }
+
+  const selectedRegions = filteredRegions(regions);
+  if (state.regionOverlay === "boxes") {
+    for (const region of selectedRegions) {
+      if (isSelectedRegion(region)) {
+        continue;
+      }
+      addOverlayBox(region.bounding_box, "regionBox");
+    }
+  }
+
+  if (state.selectedRegion) {
+    const region = regions.find(isSelectedRegion);
+    if (region) {
+      addOverlayBox(region.bounding_box, "selectedRegionBox");
+    }
+  }
+}
+
 function addOverlayBox(box, className, color = "") {
   const element = document.createElement("div");
   element.className = `overlayBox ${className}`;
@@ -450,11 +485,13 @@ function selectComponent(componentId) {
   state.selectedComponentId = componentId;
   state.selectedRelationship = null;
   state.selectedCandidate = null;
+  state.selectedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
   }
 }
 
@@ -489,11 +526,13 @@ function selectRelationship(relationship) {
   state.selectedComponentId = null;
   state.selectedRelationship = relationship;
   state.selectedCandidate = null;
+  state.selectedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
   }
 }
 
@@ -572,11 +611,13 @@ function selectCandidate(candidate) {
   state.selectedComponentId = null;
   state.selectedCandidate = candidate;
   state.selectedRelationship = null;
+  state.selectedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
   }
 }
 
@@ -641,6 +682,95 @@ function candidateSummaryText(candidate) {
     `components ${candidate.component_ids.join("+")}`,
     `box ${box.width}x${box.height} at ${box.min_x},${box.min_y}`,
     `evidence ${pairs}`,
+  ].join(" | ");
+}
+
+function renderRegionReview(frame) {
+  const allRegions = frame.regions || [];
+  const filtered = filteredRegions(allRegions);
+
+  regionSummary.textContent =
+    `${filtered.length} shown of ${allRegions.length} regions `
+    + `(min components ${regionMinComponents()}, limit ${regionLimit()})`;
+
+  regionList.innerHTML = "";
+  for (const region of filtered) {
+    const item = document.createElement("div");
+    item.className = "regionItem";
+    if (isSelectedRegion(region)) {
+      item.classList.add("selected");
+    }
+    item.tabIndex = 0;
+    item.addEventListener("click", () => selectRegion(region));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectRegion(region);
+      }
+    });
+
+    const pair = document.createElement("div");
+    pair.className = "regionPair";
+    pair.textContent = `R${region.region_id}`;
+
+    const details = document.createElement("div");
+    details.className = "regionDetails";
+    details.textContent = regionSummaryText(region);
+
+    item.append(pair, details);
+    regionList.append(item);
+  }
+}
+
+function selectRegion(region) {
+  state.selectedComponentId = null;
+  state.selectedRelationship = null;
+  state.selectedCandidate = null;
+  state.selectedRegion = region;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+    renderRelationshipReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
+  }
+}
+
+function isSelectedRegion(region) {
+  return state.selectedRegion && region.region_id === state.selectedRegion.region_id;
+}
+
+function filteredRegions(regions) {
+  return regions
+    .filter((region) => region.component_count >= regionMinComponents())
+    .sort((left, right) => (
+      right.component_count - left.component_count
+      || regionArea(right) - regionArea(left)
+      || left.region_id - right.region_id
+    ))
+    .slice(0, regionLimit());
+}
+
+function regionLimit() {
+  return Math.max(1, Number(regionLimitInput.value) || 1);
+}
+
+function regionMinComponents() {
+  return Math.max(1, Number(regionMinComponentsInput.value) || 1);
+}
+
+function regionArea(region) {
+  return region.bounding_box.width * region.bounding_box.height;
+}
+
+function regionSummaryText(region) {
+  const box = region.bounding_box;
+  return [
+    `components ${region.component_ids.join("+")}`,
+    `box ${box.width}x${box.height} at ${box.min_x},${box.min_y}`,
+    `lit=${region.area}`,
+    `occupancy=${formatNumber(region.occupancy_ratio)}`,
+    `evidence pairs=${region.evidence_pairs.length}`,
   ].join(" | ");
 }
 
@@ -745,6 +875,13 @@ candidateOverlaySelect.addEventListener("change", () => {
     renderCandidateReview(state.currentFrame);
   }
 });
+regionOverlaySelect.addEventListener("change", () => {
+  state.regionOverlay = regionOverlaySelect.value;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderRegionReview(state.currentFrame);
+  }
+});
 relationshipDistanceInput.addEventListener("input", () => {
   if (state.currentFrame) {
     renderRelationshipReview(state.currentFrame);
@@ -786,6 +923,20 @@ candidateComponentInput.addEventListener("input", () => {
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderCandidateReview(state.currentFrame);
+  }
+});
+regionLimitInput.addEventListener("input", () => {
+  state.selectedRegion = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderRegionReview(state.currentFrame);
+  }
+});
+regionMinComponentsInput.addEventListener("input", () => {
+  state.selectedRegion = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderRegionReview(state.currentFrame);
   }
 });
 playButton.addEventListener("click", () => {

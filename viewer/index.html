@@ -56,6 +56,14 @@
             <option value="all">All</option>
           </select>
         </label>
+        <label>
+          Regions
+          <select id="regionOverlaySelect">
+            <option value="off">Off</option>
+            <option value="boxes">Boxes</option>
+            <option value="selected">Selected</option>
+          </select>
+        </label>
       </section>
 
       <section class="status" aria-live="polite">
@@ -65,6 +73,7 @@
         <span id="componentStatus"></span>
         <span id="relationshipStatus"></span>
         <span id="candidateStatus"></span>
+        <span id="regionStatus"></span>
       </section>
 
       <div class="canvasWrap">
@@ -85,6 +94,7 @@
           </label>
         </div>
         <div id="componentSummary" class="componentSummary"></div>
+        <div class="reviewListLabel">Components</div>
         <div id="componentList" class="componentList"></div>
       </section>
 
@@ -104,6 +114,7 @@
           </label>
         </div>
         <div id="relationshipSummary" class="relationshipSummary"></div>
+        <div class="reviewListLabel">Relationships</div>
         <div id="relationshipList" class="relationshipList"></div>
       </section>
 
@@ -119,7 +130,24 @@
           </label>
         </div>
         <div id="candidateSummary" class="candidateSummary"></div>
+        <div class="reviewListLabel">Candidates</div>
         <div id="candidateList" class="candidateList"></div>
+      </section>
+
+      <section class="regionPanel" aria-label="Spatial region review">
+        <div class="regionControls">
+          <label>
+            Limit
+            <input id="regionLimitInput" type="number" min="1" max="200" value="40">
+          </label>
+          <label>
+            Min components
+            <input id="regionMinComponentsInput" type="number" min="1" value="1">
+          </label>
+        </div>
+        <div id="regionSummary" class="regionSummary"></div>
+        <div class="reviewListLabel">Regions</div>
+        <div id="regionList" class="regionList"></div>
       </section>
       <p id="errorMessage" class="error" role="alert"></p>
     </main>

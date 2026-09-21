@@ -44,6 +44,25 @@ class ViewerAssetTests(unittest.TestCase):
         self.assertIn("selectComponent", script)
         self.assertIn("drawComponentIds", script)
 
+    def test_region_review_panel_controls_exist(self) -> None:
+        html = self.read_asset("index.html")
+
+        self.assertIn('id="regionOverlaySelect"', html)
+        self.assertIn('id="regionLimitInput"', html)
+        self.assertIn('id="regionMinComponentsInput"', html)
+        self.assertIn('id="regionStatus"', html)
+        self.assertIn('value="1"', html)
+        self.assertIn('id="regionSummary"', html)
+        self.assertIn('id="regionList"', html)
+
+    def test_region_review_logic_is_selectable(self) -> None:
+        script = self.read_asset("viewer.js")
+
+        self.assertIn("selectedRegion", script)
+        self.assertIn("renderRegionReview", script)
+        self.assertIn("selectRegion", script)
+        self.assertIn("drawRegionOverlay", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -266,7 +266,10 @@ Final Recommendations
 | 3B | Component Relationship Evidence | LOCKED | 2026-09-20 | Pairwise relationship evidence implemented, exposed through viewer API/review panel, and passed human validation. |
 | 3C | Candidate Composite Boxes | LOCKED | 2026-09-20 | Pair-based candidate boxes implemented with cumulative threshold review, selectable candidate rows, and passed human validation. |
 | 3D | Viewer Review Tools | LOCKED | 2026-09-20 | Raw component review panel, readable ID labels, crisp overlay boxes, and thicker review outlines passed human validation. |
-| 4 | Spatial Region Discovery | NOT STARTED |  |  |
+| 4A | First-Pass Region Proposals | LOCKED | 2026-09-20 | Transitive candidate-evidence region proposals implemented and validated as a useful first pass with known over-merge limitations. |
+| 4B | Region Split Evidence | NOT STARTED |  | Planned substage. Detect when first-pass regions should split into separate spatial bands, rows, or subregions. |
+| 4C | Region Merge / Refinement Rules | NOT STARTED |  | Planned substage. Refine split/merge decisions to avoid over-fragmenting coherent regions. |
+| 4D | Region Review Tools | NOT STARTED |  | Planned substage. Improve review of region membership, split evidence, and refinement decisions. |
 | 5 | Temporal Region Tracking | NOT STARTED |  |  |
 | 6 | Temporal Behavior Analysis | NOT STARTED |  |  |
 | 7 | Structural Continuity / Anchors | NOT STARTED |  |  |
@@ -530,9 +533,14 @@ Mask necessity and mask generation are far out of scope.
 
 ### Goal
 
-Group low-level components into useful coherent regions.
+Group low-level components into useful coherent regions, in validated substages.
 
 A region should correspond to an area that behaves as a meaningful spatial unit.
+
+Stage 4 is intentionally split because useful region discovery requires both:
+
+- grouping evidence that can propose coherent areas;
+- split/refinement evidence that prevents over-merged regions.
 
 Possible evidence:
 
@@ -541,7 +549,11 @@ Possible evidence:
 - overlapping locations;
 - common movement;
 - similar dimensions;
-- repeated occupancy.
+- repeated occupancy;
+- internal blank corridors;
+- vertical band separation;
+- horizontal line/baseline alignment;
+- row-like or column-like grouping.
 
 Store:
 
@@ -553,15 +565,90 @@ location
 size
 occupancy
 persistence evidence
+split / refinement evidence when available
 ```
 
 ### Key human validation question
 
 > Does everything grouped into this region reasonably belong together spatially?
 
-### Lock condition
+### Stage 4A — First-Pass Region Proposals
 
-The program produces useful regions rather than whole-screen blobs or excessive pixel fragments.
+Goal:
+
+Create reviewable first-pass spatial region proposals from Stage 3 evidence.
+
+Scope:
+
+- group components through Stage 3 candidate-connection evidence;
+- retain singleton regions for unconnected components;
+- expose region IDs, component membership, bounding boxes, area, occupancy, and evidence pairs;
+- provide viewer selection for region proposals.
+
+Known limitation:
+
+- Transitive candidate-evidence grouping may over-merge stacked or nearby content into one broad region.
+
+Lock condition:
+
+- First-pass region proposals are generated, inspectable, explainable, and useful as input to later split/refinement substages.
+
+### Stage 4B — Region Split Evidence
+
+Goal:
+
+Detect when a first-pass region should be split into separate spatial subregions.
+
+Scope:
+
+- identify vertical bands and row-like separations;
+- identify internal blank corridors;
+- identify horizontal baseline/line evidence;
+- propose split candidates without assigning text/score/player/credit semantics;
+- preserve component membership traceability.
+
+Validation example:
+
+- `mixed_01.txt`, frame index `403` shown as viewer frame `404`, header `0x0009b72e`: the bottom `BILL PAXTON` line is visually separable but Stage 4A includes it in one broad first-pass region with nearby upper content. Stage 4B should produce evidence that this lower horizontal band can be reviewed separately.
+
+Lock condition:
+
+- split evidence makes over-merged first-pass regions reviewable as plausible separate spatial units without creating excessive fragments.
+
+### Stage 4C — Region Merge / Refinement Rules
+
+Goal:
+
+Refine split candidates into better region proposals.
+
+Scope:
+
+- prevent over-fragmentation after Stage 4B splits;
+- preserve coherent visual units such as words, phrases, art chunks, or aligned clusters as geometry only;
+- decide when split pieces should remain related within one region proposal;
+- keep evidence inspectable.
+
+Lock condition:
+
+- refined region proposals are neither whole-screen blobs nor excessive fragments.
+
+### Stage 4D — Region Review Tools
+
+Goal:
+
+Improve visual review of Stage 4 region proposals and evidence.
+
+Scope:
+
+- inspect region membership;
+- inspect split evidence;
+- inspect refinement evidence;
+- compare first-pass and refined region boxes;
+- maintain frame navigation, playback, exact display, binary display, and locked Stage 3 review behavior.
+
+Lock condition:
+
+- the operator can inspect region grouping and split/refinement reasoning quickly and understand what the detector is doing.
 
 ---
 
@@ -2189,6 +2276,110 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 - Stage 4 may use the review tooling for validation, but coherent spatial region decisions belong to Stage 4.
 
+## Stage 4A Completion Record — 2026-09-20
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Added first-pass spatial region proposal discovery from locked Stage 3 candidate evidence.
+- Connected candidate pairs are grouped transitively into spatial regions.
+- Unconnected raw components are retained as singleton regions.
+- Added region IDs.
+- Added region component membership.
+- Added region bounding boxes.
+- Added region lit-pixel area.
+- Added region occupancy ratio.
+- Added region candidate IDs and evidence pairs.
+- Added region payloads to the viewer frame API.
+- Added region counts to the viewer status area.
+- Added a viewer `Regions` selector with `Off`, `Boxes`, and `Selected` modes.
+- Added a region review panel that filters by result limit and minimum component count.
+- Added region-row selection that highlights the selected region box on the DMD canvas.
+
+**Files created:**
+
+- `src/spatial/regions.py`
+- `tests/test_spatial_regions.py`
+
+**Files modified:**
+
+- `src/spatial/__init__.py`
+- `viewer/server.py`
+- `viewer/index.html`
+- `viewer/style.css`
+- `viewer/viewer.js`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `docs/RUNNING.md`
+- `viewer/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 48 tests.
+- `node --check viewer/viewer.js`
+- Result: passed.
+
+**Real-data results, frame 0:**
+
+- `High_Score.txt`: 25 components, 300 relationships, 24 candidate boxes, 4 regions.
+- `Insert Coin.txt`: 1 component, 0 relationships, 0 candidate boxes, 1 region.
+- `mixed_01.txt`: 25 components, 300 relationships, 24 candidate boxes, 4 regions.
+- `sample_dump.txt`: 31 components, 465 relationships, 47 candidate boxes, 1 region.
+
+**Visual validation:**
+
+- Available through `python viewer/server.py` and `http://127.0.0.1:8000`.
+- Use `Regions -> Boxes` to inspect visible region boxes.
+- Use `Regions -> Selected` with the region review panel to inspect one selected region at a time.
+- Use `Min components` to focus on grouped regions and hide singleton components during review.
+- The key Stage 4A validation question is: are first-pass region proposals generated, inspectable, explainable, and useful as input to split/refinement work?
+- User confirmed Stage 4A is complete after identifying that first-pass regions exist and that the `BILL PAXTON` example is a Stage 4B split/refinement need rather than a Stage 4A generation failure.
+
+**Successful human validation looks like:**
+
+- Region boxes are generated from candidate evidence and are inspectable as first-pass proposals.
+- Selecting a region row highlights the same area described by its component IDs and bounding box.
+- Singleton regions preserve isolated components without pretending they belong to a larger group.
+- Region evidence remains explainable through component membership and evidence-pair counts.
+
+**Failure examples:**
+
+- No regions are generated even though components exist.
+- Region rows do not match highlighted bounding boxes.
+- Selecting a region row highlights the wrong bounding box.
+- The viewer implies semantic meanings such as score, player, credit, or initials.
+
+**Known limitations:**
+
+- Regions are first-pass spatial group proposals only.
+- Regions are built from within-frame candidate evidence only.
+- Transitive candidate-evidence grouping may over-merge stacked or nearby content into one broad region.
+- Example known limitation: `mixed_01.txt`, frame index `403` / viewer frame `404`, header `0x0009b72e`, where the bottom `BILL PAXTON` line is visually separable but Stage 4A includes it in a broad region with upper content.
+- No temporal tracking exists yet.
+- No semantic labels, sequence detection, mask classification, or masking exists.
+
+**Locked components changed:**
+
+- No Stage 0, Stage 1, Stage 2, Stage 3A, Stage 3B, Stage 3C, or Stage 3D behavior was intentionally changed.
+
+**Regression tests that must continue to pass:**
+
+- `tests/test_foundation.py`
+- `tests/test_frame_parser.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `tests/test_spatial_components.py`
+- `tests/test_spatial_relationships.py`
+- `tests/test_spatial_candidates.py`
+- `tests/test_spatial_regions.py`
+
+**Notes for future stages:**
+
+- Stage 4B should add split evidence for over-merged first-pass regions before Stage 5 temporal tracking begins.
+
 ---
 
 # 16. Project Amendment Log
@@ -2286,6 +2477,38 @@ No code regression impact. Future documentation and stage reports must include t
 
 **Requires reopening a locked stage:** no
 
+## 2026-09-20 — Stage 4 Split Into Region Proposal And Refinement Substages
+
+**Reason for change:**
+
+Stage 4A first-pass region proposals correctly generated inspectable spatial regions from Stage 3 candidate evidence, but human validation found that transitive grouping can over-merge stacked or nearby content. In `mixed_01.txt`, frame index `403` / viewer frame `404`, header `0x0009b72e`, the bottom `BILL PAXTON` line is visually separable but Stage 4A includes it in one broad region with nearby upper content.
+
+**Stages affected:**
+
+- Stage 4
+- Stage 5 boundary clarified
+
+**Old assumption:**
+
+Stage 4 could be validated as a single implementation of spatial region discovery.
+
+**New approved rule:**
+
+Stage 4 is split into:
+
+- Stage 4A — First-Pass Region Proposals
+- Stage 4B — Region Split Evidence
+- Stage 4C — Region Merge / Refinement Rules
+- Stage 4D — Region Review Tools
+
+Stage 4A is locked as the first-pass proposal generator. Stage 4B is the next approved implementation target and should address over-merged regions using geometry-only split evidence such as vertical bands, internal blank corridors, and horizontal baseline/line separation.
+
+**Regression impact:**
+
+Stage 4A regression tests must continue to pass. Stage 4B must add focused tests without weakening locked Stage 3 or Stage 4A behavior.
+
+**Requires reopening a locked stage:** no
+
 ---
 
 # 17. Open Questions / Unresolved Decisions
@@ -2356,26 +2579,24 @@ is just as valuable as discovering an optimized mask.
 
 # 19. Current Approved Task
 
-**Current stage:** Awaiting approval for Stage 4 — Spatial Region Discovery
+**Current stage:** Stage 4B — Region Split Evidence approved next
 
-Stage 3D is locked. Codex must not begin Stage 4 until the user explicitly approves that next stage.
+Stage 4A is locked as the first-pass region proposal generator. Codex must not begin Stage 5 until Stage 4B, 4C, and 4D are complete, validated, and locked.
 
-Stage 3D locked validation confirmed:
+Stage 4B should address the demonstrated Stage 4A limitation:
 
-- the component review panel updates as frames change;
-- selecting a component row highlights the matching raw component;
-- component ID labels help identify selected or visible components without hiding raw evidence;
-- component boxes and candidate threshold boxes are visually readable;
-- relationship and candidate review panels still work as validated in Stage 3B and Stage 3C;
-- candidates and relationships remain evidence/proposals only, not final regions.
+- transitive first-pass region grouping may over-merge stacked or nearby content;
+- `mixed_01.txt`, frame index `403` / viewer frame `404`, header `0x0009b72e`, includes a bottom `BILL PAXTON` line that should be reviewable as a separate lower horizontal band;
+- split evidence must remain geometry-only and must not assign semantics such as score, player, credit, initials, actor names, or text labels.
 
-Do not implement final spatial region decisions, optimal bounding boxes, temporal tracking, sequence detection, mask classification, or masking yet.
+Do not implement Stage 4C refinement, Stage 4D review tooling, temporal tracking, sequence detection, semantic labels, mask classification, or masking unless explicitly approved.
 
-At Stage 4 approval:
+At Stage 4B completion:
 
-1. confirm Stage 4 scope before implementation;
-2. preserve locked Stage 3A, 3B, 3C, and 3D behavior unless a documented defect requires a targeted revision;
-3. implement spatial region discovery only;
-4. include operator-facing validation instructions when Stage 4 work is complete.
+1. update the Stage 4B status in the Running Project State table;
+2. add a Stage 4B validation or completion record;
+3. update Current Approved Task to the next approved action only after user approval;
+4. provide operator-facing validation instructions, success examples, and failure examples;
+5. STOP.
 
-Do not begin Stage 4 automatically.
+Do not begin Stage 5 automatically.
