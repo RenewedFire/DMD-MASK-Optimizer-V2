@@ -1418,6 +1418,16 @@ Do not require routine JSON inspection.
 
 Do not require the user to manually locate interesting frames unless unavoidable.
 
+Whenever Codex completes a new function, viewer feature, stage, or substage, the user-facing output must include:
+
+- exactly how the operator should validate it;
+- which viewer controls, datasets, frames, or API endpoints to use;
+- what a successful validation looks like in plain language;
+- what a failure would look like;
+- whether the validation is visual, numeric, automated-only, or not applicable.
+
+Do not assume the operator can infer the validation method from the implementation details.
+
 ---
 
 # 13. Credit-Efficiency Rules
@@ -1433,7 +1443,8 @@ Before coding each stage, Codex should:
 7. run relevant locked-stage regression tests;
 8. update this file with results;
 9. produce the stage report;
-10. stop.
+10. include human-validation instructions and success/failure examples;
+11. stop.
 
 Avoid:
 
@@ -1466,6 +1477,12 @@ REAL-DATA TEST:
 
 VISUAL VALIDATION AVAILABLE:
 yes/no
+
+HOW TO VALIDATE:
+
+SUCCESSFUL VALIDATION LOOKS LIKE:
+
+VALIDATION FAILURE LOOKS LIKE:
 
 KNOWN LIMITATIONS:
 
@@ -1507,6 +1524,12 @@ Use this template:
 **Real-data results:**
 
 **Visual validation:**
+
+**How to validate:**
+
+**Successful validation looks like:**
+
+**Validation failure looks like:**
 
 **Known limitations:**
 
@@ -2131,6 +2154,31 @@ Stage 3A is the next approved implementation target. Stage 3C may propose candid
 **Regression impact:**
 
 Stage 0, Stage 1, and Stage 2 regression tests must continue to pass. Stage 3A must add focused tests without weakening locked parser or viewer behavior.
+
+**Requires reopening a locked stage:** no
+
+## 2026-09-20 — Human Validation Instructions Required
+
+**Reason for change:**
+
+The operator repeatedly needed to ask how to validate newly implemented stages and viewer features. Validation expectations must be explicit at completion time.
+
+**Stages affected:**
+
+- All future stages and substages.
+- Any newly completed function or viewer feature that requires user review.
+
+**Old assumption:**
+
+Stage reports listed tests and visual-validation availability, but did not always explain how a human should validate the output or what success/failure looked like.
+
+**New approved rule:**
+
+Every completed function, viewer feature, stage, or substage must include operator-facing validation instructions, successful-validation examples, and failure examples. These instructions must be included in the final Codex response and in the source-of-truth completion or validation record when applicable.
+
+**Regression impact:**
+
+No code regression impact. Future documentation and stage reports must include the new validation fields.
 
 **Requires reopening a locked stage:** no
 

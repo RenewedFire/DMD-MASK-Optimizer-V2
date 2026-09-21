@@ -379,21 +379,46 @@ function stopPlayback() {
   state.playing = false;
   playButton.textContent = "Play";
   if (state.timer !== null) {
-    clearInterval(state.timer);
+    clearTimeout(state.timer);
     state.timer = null;
   }
 }
 
 function startPlayback() {
+  if (!state.dataset || state.frameCount === 0) {
+    return;
+  }
   state.playing = true;
   playButton.textContent = "Pause";
-  state.timer = setInterval(() => {
-    const next = state.frameNumber + 1 >= state.frameCount ? 0 : state.frameNumber + 1;
-    loadFrame(next).catch((error) => {
-      stopPlayback();
-      setError(error.message);
-    });
+  schedulePlaybackStep();
+}
+
+function schedulePlaybackStep() {
+  if (!state.playing) {
+    return;
+  }
+  if (state.timer !== null) {
+    clearTimeout(state.timer);
+  }
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    playbackStep();
   }, 120);
+}
+
+async function playbackStep() {
+  if (!state.playing) {
+    return;
+  }
+  const next = state.frameNumber + 1 >= state.frameCount ? 0 : state.frameNumber + 1;
+  try {
+    await loadFrame(next);
+  } catch (error) {
+    stopPlayback();
+    setError(error.message);
+    return;
+  }
+  schedulePlaybackStep();
 }
 
 async function guarded(action) {
@@ -407,9 +432,18 @@ async function guarded(action) {
 }
 
 loadButton.addEventListener("click", () => guarded(loadDataset));
-previousButton.addEventListener("click", () => guarded(() => loadFrame(state.frameNumber - 1)));
-nextButton.addEventListener("click", () => guarded(() => loadFrame(state.frameNumber + 1)));
-jumpButton.addEventListener("click", () => guarded(() => loadFrame(Number(frameInput.value))));
+previousButton.addEventListener("click", () => {
+  stopPlayback();
+  guarded(() => loadFrame(state.frameNumber - 1));
+});
+nextButton.addEventListener("click", () => {
+  stopPlayback();
+  guarded(() => loadFrame(state.frameNumber + 1));
+});
+jumpButton.addEventListener("click", () => {
+  stopPlayback();
+  guarded(() => loadFrame(Number(frameInput.value)));
+});
 modeSelect.addEventListener("change", () => {
   state.mode = modeSelect.value;
   guarded(() => loadFrame(state.frameNumber));
