@@ -39,6 +39,14 @@
           </select>
         </label>
         <label>
+          Component IDs
+          <select id="componentIdSelect">
+            <option value="off">Off</option>
+            <option value="selected">Selected</option>
+            <option value="visible">Visible</option>
+          </select>
+        </label>
+        <label>
           Candidates
           <select id="candidateOverlaySelect">
             <option value="off">Off</option>
@@ -62,7 +70,23 @@
       <div class="canvasWrap">
         <canvas id="dmdCanvas" width="128" height="32" aria-label="128 by 32 DMD frame"></canvas>
         <canvas id="overlayCanvas" width="128" height="32" aria-label="Raw component overlays"></canvas>
+        <div id="labelOverlay" class="labelOverlay" aria-hidden="true"></div>
       </div>
+
+      <section class="componentPanel" aria-label="Raw component review">
+        <div class="componentControls">
+          <label>
+            Limit
+            <input id="componentLimitInput" type="number" min="1" max="200" value="40">
+          </label>
+          <label>
+            Min area
+            <input id="componentMinAreaInput" type="number" min="1" value="1">
+          </label>
+        </div>
+        <div id="componentSummary" class="componentSummary"></div>
+        <div id="componentList" class="componentList"></div>
+      </section>
 
       <section class="relationshipPanel" aria-label="Relationship review">
         <div class="relationshipControls">
@@ -81,6 +105,21 @@
         </div>
         <div id="relationshipSummary" class="relationshipSummary"></div>
         <div id="relationshipList" class="relationshipList"></div>
+      </section>
+
+      <section class="candidatePanel" aria-label="Candidate composite box review">
+        <div class="candidateControls">
+          <label>
+            Limit
+            <input id="candidateLimitInput" type="number" min="1" max="200" value="25">
+          </label>
+          <label>
+            Component
+            <input id="candidateComponentInput" type="number" min="0" placeholder="Any">
+          </label>
+        </div>
+        <div id="candidateSummary" class="candidateSummary"></div>
+        <div id="candidateList" class="candidateList"></div>
       </section>
       <p id="errorMessage" class="error" role="alert"></p>
     </main>

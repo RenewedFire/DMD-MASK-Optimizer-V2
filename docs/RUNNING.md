@@ -90,5 +90,13 @@ on the DMD canvas.
 
 Stage 3C adds candidate composite box overlays. Candidate boxes are review
 proposals only. They are not final regions and are not optimal boxes. Use the
-`Candidates` selector to show pair-based candidate boxes by relationship
-threshold.
+`Candidates` selector as a maximum relationship threshold: `Threshold 2` shows
+threshold 1 and 2 candidates, and `Threshold 3` shows threshold 1, 2, and 3
+candidates. The candidate review panel lists the currently visible proposals;
+select a row to highlight that candidate box and the raw components that
+produced it.
+
+Stage 3D adds raw component review controls. The component panel lists raw
+components by area and can filter out tiny components. Select a component row to
+highlight its source island. The `Component IDs` selector can label only the
+selected component or the currently visible component list.

@@ -30,4 +30,13 @@ components.
 
 Stage 3C adds candidate composite box overlays. These are pair-based review
 proposals derived from nearby relationship evidence. They are not final spatial
-regions, optimal boxes, or mask candidates.
+regions, optimal boxes, or mask candidates. The `Candidates` selector is
+cumulative: `Threshold 2` includes threshold 1 and 2 proposals, while
+`Threshold 3` includes threshold 1, 2, and 3 proposals. The candidate review
+panel filters by result limit and component ID. Select a candidate row to
+highlight that proposal and its source components on the canvas.
+
+Stage 3D adds raw component review controls. Use the component panel to inspect
+raw component IDs, area, bounding boxes, and centroids. Select a component row
+to highlight it on the canvas. Use `Component IDs` to label either the selected
+component or the visible filtered component list.

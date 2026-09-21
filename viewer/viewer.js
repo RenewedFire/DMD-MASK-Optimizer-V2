@@ -4,9 +4,12 @@ const state = {
   frameNumber: 0,
   mode: "exact",
   componentOverlay: "off",
+  componentIds: "off",
   candidateOverlay: "off",
   currentFrame: null,
+  selectedComponentId: null,
   selectedRelationship: null,
+  selectedCandidate: null,
   playing: false,
   timer: null,
 };
@@ -20,6 +23,7 @@ const frameInput = document.querySelector("#frameInput");
 const jumpButton = document.querySelector("#jumpButton");
 const modeSelect = document.querySelector("#modeSelect");
 const componentOverlaySelect = document.querySelector("#componentOverlaySelect");
+const componentIdSelect = document.querySelector("#componentIdSelect");
 const candidateOverlaySelect = document.querySelector("#candidateOverlaySelect");
 const datasetStatus = document.querySelector("#datasetStatus");
 const frameStatus = document.querySelector("#frameStatus");
@@ -27,16 +31,25 @@ const headerStatus = document.querySelector("#headerStatus");
 const componentStatus = document.querySelector("#componentStatus");
 const relationshipStatus = document.querySelector("#relationshipStatus");
 const candidateStatus = document.querySelector("#candidateStatus");
+const componentLimitInput = document.querySelector("#componentLimitInput");
+const componentMinAreaInput = document.querySelector("#componentMinAreaInput");
+const componentSummary = document.querySelector("#componentSummary");
+const componentList = document.querySelector("#componentList");
 const relationshipDistanceInput = document.querySelector("#relationshipDistanceInput");
 const relationshipLimitInput = document.querySelector("#relationshipLimitInput");
 const relationshipComponentInput = document.querySelector("#relationshipComponentInput");
 const relationshipSummary = document.querySelector("#relationshipSummary");
 const relationshipList = document.querySelector("#relationshipList");
+const candidateLimitInput = document.querySelector("#candidateLimitInput");
+const candidateComponentInput = document.querySelector("#candidateComponentInput");
+const candidateSummary = document.querySelector("#candidateSummary");
+const candidateList = document.querySelector("#candidateList");
 const errorMessage = document.querySelector("#errorMessage");
 const canvas = document.querySelector("#dmdCanvas");
 const context = canvas.getContext("2d");
 const overlayCanvas = document.querySelector("#overlayCanvas");
 const overlayContext = overlayCanvas.getContext("2d");
+const labelOverlay = document.querySelector("#labelOverlay");
 
 const exactPalette = [
   [0, 0, 0],
@@ -93,7 +106,9 @@ async function loadFrame(frameNumber) {
   const payload = await fetchJson(
     `/api/frame?name=${encodeURIComponent(state.dataset)}&frame=${bounded}`,
   );
+  state.selectedComponentId = null;
   state.selectedRelationship = null;
+  state.selectedCandidate = null;
   state.frameNumber = payload.frame.frame_number;
   frameInput.value = state.frameNumber;
   frameStatus.textContent = `Frame ${state.frameNumber + 1} of ${state.frameCount}`;
@@ -103,7 +118,9 @@ async function loadFrame(frameNumber) {
   candidateStatus.textContent = `${payload.frame.candidate_box_count} candidate boxes`;
   state.currentFrame = payload.frame;
   drawFrame(payload.frame);
+  renderComponentReview(payload.frame);
   renderRelationshipReview(payload.frame);
+  renderCandidateReview(payload.frame);
 }
 
 function drawFrame(frame) {
@@ -126,13 +143,16 @@ function drawFrame(frame) {
 
 function drawAnalysisOverlay(frame) {
   overlayContext.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  labelOverlay.innerHTML = "";
   drawComponentOverlay(frame.components || []);
   drawCandidateOverlay(frame.candidate_boxes || []);
 }
 
 function drawComponentOverlay(components) {
   if (state.componentOverlay === "off") {
+    drawSelectedComponent(components);
     drawSelectedRelationship(components);
+    drawComponentIds(components);
     return;
   }
 
@@ -143,7 +163,9 @@ function drawComponentOverlay(components) {
   if (state.componentOverlay === "boxes" || state.componentOverlay === "both") {
     drawComponentBoxes(components);
   }
+  drawSelectedComponent(components);
   drawSelectedRelationship(components);
+  drawComponentIds(components);
 }
 
 function drawCandidateOverlay(candidates) {
@@ -151,20 +173,16 @@ function drawCandidateOverlay(candidates) {
     return;
   }
 
-  const selectedCandidates = candidates.filter((candidate) => (
-    state.candidateOverlay === "all" || String(candidate.threshold) === state.candidateOverlay
-  ));
+  const selectedCandidates = filteredCandidates(candidates);
 
-  overlayContext.save();
-  overlayContext.imageSmoothingEnabled = false;
-  overlayContext.lineWidth = 1;
-  overlayContext.strokeStyle = "rgba(255, 255, 255, 0.95)";
-  overlayContext.setLineDash([2, 2]);
   for (const candidate of selectedCandidates) {
-    const box = candidate.bounding_box;
-    overlayContext.strokeRect(box.min_x + 0.5, box.min_y + 0.5, box.width, box.height);
+    if (isSelectedCandidate(candidate)) {
+      continue;
+    }
+    addOverlayBox(candidate.bounding_box, "candidateBox");
   }
-  overlayContext.restore();
+
+  drawSelectedCandidate(candidates, state.currentFrame?.components || []);
 }
 
 function componentColor(componentId, alpha) {
@@ -188,15 +206,50 @@ function drawComponentPixels(components) {
 }
 
 function drawComponentBoxes(components) {
-  overlayContext.save();
-  overlayContext.imageSmoothingEnabled = false;
-  overlayContext.lineWidth = 1;
   for (const component of components) {
-    const box = component.bounding_box;
-    overlayContext.strokeStyle = componentColor(component.component_id, 0.85);
-    overlayContext.strokeRect(box.min_x + 0.5, box.min_y + 0.5, box.width, box.height);
+    addOverlayBox(
+      component.bounding_box,
+      "componentBox",
+      componentColor(component.component_id, 0.95),
+    );
   }
-  overlayContext.restore();
+}
+
+function drawSelectedComponent(components) {
+  if (state.selectedComponentId === null) {
+    return;
+  }
+
+  const component = components.find((item) => item.component_id === state.selectedComponentId);
+  if (!component) {
+    return;
+  }
+
+  addOverlayBox(
+    component.bounding_box,
+    "selectedComponentBox",
+    componentColor(component.component_id, 1),
+  );
+}
+
+function drawComponentIds(components) {
+  if (state.componentIds === "off") {
+    return;
+  }
+
+  const labelledComponents = state.componentIds === "selected"
+    ? components.filter((component) => component.component_id === state.selectedComponentId)
+    : filteredComponents(components);
+
+  for (const component of labelledComponents) {
+    const box = component.bounding_box;
+    const label = document.createElement("div");
+    label.className = "componentLabel";
+    label.textContent = component.component_id;
+    label.style.left = `${(box.min_x / 128) * 100}%`;
+    label.style.top = `${(box.min_y / 32) * 100}%`;
+    labelOverlay.append(label);
+  }
 }
 
 function drawSelectedRelationship(components) {
@@ -210,23 +263,17 @@ function drawSelectedRelationship(components) {
   ]);
   const selectedComponents = components.filter((component) => selectedIds.has(component.component_id));
 
-  overlayContext.save();
-  overlayContext.imageSmoothingEnabled = false;
-  overlayContext.lineWidth = 2;
   for (const component of selectedComponents) {
-    const box = component.bounding_box;
-    overlayContext.strokeStyle = "#ffffff";
-    overlayContext.strokeRect(box.min_x + 0.5, box.min_y + 0.5, box.width, box.height);
-    overlayContext.strokeStyle = componentColor(component.component_id, 1);
-    overlayContext.strokeRect(
-      box.min_x + 1.5,
-      box.min_y + 1.5,
-      Math.max(0, box.width - 2),
-      Math.max(0, box.height - 2),
+    addOverlayBox(
+      component.bounding_box,
+      "selectedComponentBox",
+      componentColor(component.component_id, 1),
     );
   }
 
   if (selectedComponents.length === 2) {
+    overlayContext.save();
+    overlayContext.imageSmoothingEnabled = false;
     const [first, second] = selectedComponents;
     overlayContext.strokeStyle = "#ffffff";
     overlayContext.lineWidth = 1;
@@ -234,8 +281,45 @@ function drawSelectedRelationship(components) {
     overlayContext.moveTo(first.centroid.x + 0.5, first.centroid.y + 0.5);
     overlayContext.lineTo(second.centroid.x + 0.5, second.centroid.y + 0.5);
     overlayContext.stroke();
+    overlayContext.restore();
   }
-  overlayContext.restore();
+}
+
+function drawSelectedCandidate(candidates, components) {
+  if (!state.selectedCandidate) {
+    return;
+  }
+
+  const candidate = candidates.find(isSelectedCandidate);
+  if (!candidate) {
+    return;
+  }
+
+  const selectedIds = new Set(candidate.component_ids);
+  const selectedComponents = components.filter((component) => selectedIds.has(component.component_id));
+
+  addOverlayBox(candidate.bounding_box, "selectedCandidateBox");
+
+  for (const component of selectedComponents) {
+    addOverlayBox(
+      component.bounding_box,
+      "componentBox",
+      componentColor(component.component_id, 1),
+    );
+  }
+}
+
+function addOverlayBox(box, className, color = "") {
+  const element = document.createElement("div");
+  element.className = `overlayBox ${className}`;
+  element.style.left = `${(box.min_x / 128) * 100}%`;
+  element.style.top = `${(box.min_y / 32) * 100}%`;
+  element.style.width = `${(box.width / 128) * 100}%`;
+  element.style.height = `${(box.height / 32) * 100}%`;
+  if (color) {
+    element.style.color = color;
+  }
+  labelOverlay.append(element);
 }
 
 function hslToRgb(hue, saturation, lightness) {
@@ -325,11 +409,91 @@ function renderRelationshipReview(frame) {
   }
 }
 
-function selectRelationship(relationship) {
-  state.selectedRelationship = relationship;
+function renderComponentReview(frame) {
+  const allComponents = frame.components || [];
+  const filtered = filteredComponents(allComponents);
+
+  componentSummary.textContent =
+    `${filtered.length} shown of ${allComponents.length} components `
+    + `(min area ${componentMinArea()}, limit ${componentLimit()})`;
+
+  componentList.innerHTML = "";
+  for (const component of filtered) {
+    const item = document.createElement("div");
+    item.className = "componentItem";
+    if (component.component_id === state.selectedComponentId) {
+      item.classList.add("selected");
+    }
+    item.tabIndex = 0;
+    item.addEventListener("click", () => selectComponent(component.component_id));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectComponent(component.component_id);
+      }
+    });
+
+    const pair = document.createElement("div");
+    pair.className = "componentPair";
+    pair.textContent = `#${component.component_id}`;
+
+    const details = document.createElement("div");
+    details.className = "componentDetails";
+    details.textContent = componentSummaryText(component);
+
+    item.append(pair, details);
+    componentList.append(item);
+  }
+}
+
+function selectComponent(componentId) {
+  state.selectedComponentId = componentId;
+  state.selectedRelationship = null;
+  state.selectedCandidate = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+  }
+}
+
+function filteredComponents(components) {
+  return components
+    .filter((component) => component.area >= componentMinArea())
+    .sort((left, right) => (
+      right.area - left.area
+      || left.component_id - right.component_id
+    ))
+    .slice(0, componentLimit());
+}
+
+function componentLimit() {
+  return Math.max(1, Number(componentLimitInput.value) || 1);
+}
+
+function componentMinArea() {
+  return Math.max(1, Number(componentMinAreaInput.value) || 1);
+}
+
+function componentSummaryText(component) {
+  const box = component.bounding_box;
+  return [
+    `area=${component.area}`,
+    `box ${box.width}x${box.height} at ${box.min_x},${box.min_y}`,
+    `centroid ${formatNumber(component.centroid.x)},${formatNumber(component.centroid.y)}`,
+  ].join(" | ");
+}
+
+function selectRelationship(relationship) {
+  state.selectedComponentId = null;
+  state.selectedRelationship = relationship;
+  state.selectedCandidate = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+    renderRelationshipReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
   }
 }
 
@@ -365,6 +529,119 @@ function relationshipOrientation(relationship) {
     return relationship.vertical_gap <= 3 ? "near vertical" : "vertically aligned";
   }
   return relationship.edge_distance <= 3 ? "near diagonal" : "diagonal/far";
+}
+
+function renderCandidateReview(frame) {
+  const allCandidates = frame.candidate_boxes || [];
+  const filtered = filteredCandidates(allCandidates);
+
+  candidateSummary.textContent =
+    `${filtered.length} shown of ${allCandidates.length} candidates `
+    + `(threshold ${candidateThresholdLabel()}, limit ${candidateLimit()})`;
+
+  candidateList.innerHTML = "";
+  for (const candidate of filtered) {
+    const item = document.createElement("div");
+    item.className = "candidateItem";
+    if (isSelectedCandidate(candidate)) {
+      item.classList.add("selected");
+    }
+    item.tabIndex = 0;
+    item.addEventListener("click", () => selectCandidate(candidate));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectCandidate(candidate);
+      }
+    });
+
+    const pair = document.createElement("div");
+    pair.className = "candidatePair";
+    pair.textContent = `C${candidate.candidate_id}`;
+
+    const details = document.createElement("div");
+    details.className = "candidateDetails";
+    details.textContent = candidateSummaryText(candidate);
+
+    item.append(pair, details);
+    candidateList.append(item);
+  }
+}
+
+function selectCandidate(candidate) {
+  state.selectedComponentId = null;
+  state.selectedCandidate = candidate;
+  state.selectedRelationship = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+    renderRelationshipReview(state.currentFrame);
+  }
+}
+
+function isSelectedCandidate(candidate) {
+  return state.selectedCandidate
+    && candidate.candidate_id === state.selectedCandidate.candidate_id;
+}
+
+function filteredCandidates(candidates) {
+  const componentFilter = candidateComponentInput.value === ""
+    ? null
+    : Number(candidateComponentInput.value);
+
+  return candidates
+    .filter(candidateThresholdAllows)
+    .filter((candidate) => (
+      componentFilter === null || candidate.component_ids.includes(componentFilter)
+    ))
+    .sort((left, right) => (
+      left.threshold - right.threshold
+      || candidateArea(left) - candidateArea(right)
+      || left.candidate_id - right.candidate_id
+    ))
+    .slice(0, candidateLimit());
+}
+
+function candidateThresholdAllows(candidate) {
+  if (state.candidateOverlay === "off") {
+    return false;
+  }
+  if (state.candidateOverlay === "all") {
+    return true;
+  }
+  return candidate.threshold <= Number(state.candidateOverlay);
+}
+
+function candidateLimit() {
+  return Math.max(1, Number(candidateLimitInput.value) || 1);
+}
+
+function candidateThresholdLabel() {
+  if (state.candidateOverlay === "off") {
+    return "off";
+  }
+  if (state.candidateOverlay === "all") {
+    return "all";
+  }
+  return `<= ${state.candidateOverlay}`;
+}
+
+function candidateArea(candidate) {
+  return candidate.bounding_box.width * candidate.bounding_box.height;
+}
+
+function candidateSummaryText(candidate) {
+  const box = candidate.bounding_box;
+  const pairs = candidate.evidence_pairs
+    .map((pair) => `${pair.component_a_id}<->${pair.component_b_id}`)
+    .join(", ");
+  return [
+    `threshold=${candidate.threshold}`,
+    `components ${candidate.component_ids.join("+")}`,
+    `box ${box.width}x${box.height} at ${box.min_x},${box.min_y}`,
+    `evidence ${pairs}`,
+  ].join(" | ");
 }
 
 function formatNumber(value) {
@@ -454,10 +731,18 @@ componentOverlaySelect.addEventListener("change", () => {
     drawAnalysisOverlay(state.currentFrame);
   }
 });
-candidateOverlaySelect.addEventListener("change", () => {
-  state.candidateOverlay = candidateOverlaySelect.value;
+componentIdSelect.addEventListener("change", () => {
+  state.componentIds = componentIdSelect.value;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
+  }
+});
+candidateOverlaySelect.addEventListener("change", () => {
+  state.candidateOverlay = candidateOverlaySelect.value;
+  state.selectedCandidate = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
   }
 });
 relationshipDistanceInput.addEventListener("input", () => {
@@ -473,6 +758,34 @@ relationshipLimitInput.addEventListener("input", () => {
 relationshipComponentInput.addEventListener("input", () => {
   if (state.currentFrame) {
     renderRelationshipReview(state.currentFrame);
+  }
+});
+componentLimitInput.addEventListener("input", () => {
+  state.selectedComponentId = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+  }
+});
+componentMinAreaInput.addEventListener("input", () => {
+  state.selectedComponentId = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+  }
+});
+candidateLimitInput.addEventListener("input", () => {
+  state.selectedCandidate = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+  }
+});
+candidateComponentInput.addEventListener("input", () => {
+  state.selectedCandidate = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
   }
 });
 playButton.addEventListener("click", () => {

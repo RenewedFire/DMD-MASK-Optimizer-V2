@@ -264,8 +264,8 @@ Final Recommendations
 | 2 | Forensic DMD Viewer | LOCKED | 2026-09-19 | Web viewer loads real dataset, renders 128x32 exact and binary frames, supports navigation/playback, and passed human visual confirmation. |
 | 3A | Lit Pixel Components | LOCKED | 2026-09-19 | Raw 8-connected lit components implemented, exposed in viewer pixel/box overlays, and passed human visual confirmation. |
 | 3B | Component Relationship Evidence | LOCKED | 2026-09-20 | Pairwise relationship evidence implemented, exposed through viewer API/review panel, and passed human validation. |
-| 3C | Candidate Composite Boxes | VALIDATING |  | Pair-based candidate boxes implemented and exposed as viewer overlays; awaiting human review before lock. |
-| 3D | Viewer Review Tools | NOT STARTED |  | Planned substage. Add review toggles/details for raw components and candidates. |
+| 3C | Candidate Composite Boxes | LOCKED | 2026-09-20 | Pair-based candidate boxes implemented with cumulative threshold review, selectable candidate rows, and passed human validation. |
+| 3D | Viewer Review Tools | LOCKED | 2026-09-20 | Raw component review panel, readable ID labels, crisp overlay boxes, and thicker review outlines passed human validation. |
 | 4 | Spatial Region Discovery | NOT STARTED |  |  |
 | 5 | Temporal Region Tracking | NOT STARTED |  |  |
 | 6 | Temporal Behavior Analysis | NOT STARTED |  |  |
@@ -2012,7 +2012,7 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 ## Stage 3C Validation Record — 2026-09-20
 
-**Status:** VALIDATING
+**Status:** LOCKED
 
 **What was implemented:**
 
@@ -2024,7 +2024,10 @@ No stage should be marked `LOCKED` without an explicit completion record.
 - Added evidence pairs explaining which relationship produced each candidate.
 - Added candidate payloads to the viewer frame API.
 - Added candidate count to the viewer status area.
-- Added viewer candidate overlays filtered by threshold or all candidates.
+- Added viewer candidate overlays filtered by maximum threshold or all candidates.
+- Added cumulative candidate threshold review: `Threshold 2` includes threshold 1 and 2 proposals, and `Threshold 3` includes threshold 1, 2, and 3 proposals.
+- Added a candidate review panel that updates per frame and filters by result limit and component ID.
+- Added candidate-row selection that highlights the selected candidate box and the raw source components that produced it.
 
 **Files created:**
 
@@ -2036,8 +2039,10 @@ No stage should be marked `LOCKED` without an explicit completion record.
 - `src/spatial/__init__.py`
 - `viewer/server.py`
 - `viewer/index.html`
+- `viewer/style.css`
 - `viewer/viewer.js`
 - `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
 - `docs/RUNNING.md`
 - `viewer/README.md`
 - `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
@@ -2045,7 +2050,7 @@ No stage should be marked `LOCKED` without an explicit completion record.
 **Automated tests:**
 
 - `python -m unittest discover -s tests`
-- Result: passed, 39 tests.
+- Result: passed, 41 tests.
 
 **Real-data results:**
 
@@ -2054,9 +2059,25 @@ No stage should be marked `LOCKED` without an explicit completion record.
 **Visual validation:**
 
 - Available through `python viewer/server.py` and `http://127.0.0.1:8000`.
-- Use the `Candidates` selector to inspect thresholded candidate boxes.
+- Use the `Candidates` selector as a maximum threshold selector. `Threshold 1` shows only the tightest proposals, `Threshold 2` includes threshold 1 and 2 proposals, and `Threshold 3` includes threshold 1, 2, and 3 proposals.
+- Use the candidate review panel below the canvas to limit the visible candidates or filter to one component ID.
+- Select a candidate row to highlight that proposal. The viewer should draw one prominent candidate box and the raw components that created it.
 - Candidate boxes are review proposals only; they are not final regions, optimal boxes, or masks.
-- Stage 3C should be locked after human review confirms candidate boxes are reviewable and do not hide raw component evidence.
+- User confirmed Stage 3C is doing its job after validating that selected candidate rows are traceable to highlighted source components.
+
+**Successful human validation looks like:**
+
+- Candidate rows can be matched to visible highlighted source components on the canvas.
+- Increasing the threshold adds looser proposals without removing tighter lower-threshold proposals.
+- The selected candidate box encloses only the two raw components identified by that row's evidence pair.
+- Candidate overlays remain secondary to raw component evidence and do not require guessing which components produced a box.
+
+**Failure examples:**
+
+- A selected candidate row highlights unrelated raw components.
+- Threshold 2 or 3 hides candidates that were visible at a lower threshold.
+- The overlay becomes a dense lattice where individual candidate proposals cannot be reviewed.
+- Candidate boxes are interpreted as final spatial regions, optimal boxes, or mask regions.
 
 **Known limitations:**
 
@@ -2084,6 +2105,89 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 - Stage 3D may improve candidate review controls and selection details.
 - Stage 4 may consume candidates as evidence, but final coherent spatial region decisions belong to Stage 4.
+
+## Stage 3D Validation Record — 2026-09-20
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Added a raw component review panel below the DMD canvas.
+- Added component review filtering by result limit and minimum component area.
+- Added component rows showing component ID, area, bounding box, and centroid.
+- Added component-row selection that highlights the selected raw component on the DMD canvas.
+- Added a `Component IDs` selector with `Off`, `Selected`, and `Visible` modes.
+- Moved component ID labels from the pixel-scaled canvas to a crisp HTML overlay layer.
+- Moved component boxes, selected component boxes, selected relationship boxes, and candidate threshold boxes to the crisp HTML overlay layer.
+- Increased box overlay thickness for readability.
+- Preserved Stage 2 navigation/playback and exact/binary display behavior.
+- Preserved locked Stage 3A component detection, Stage 3B relationship evidence, and Stage 3C candidate generation behavior.
+
+**Files modified:**
+
+- `viewer/index.html`
+- `viewer/style.css`
+- `viewer/viewer.js`
+- `tests/test_viewer_assets.py`
+- `docs/RUNNING.md`
+- `viewer/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 43 tests.
+- `node --check viewer/viewer.js`
+- Result: passed.
+
+**Visual validation:**
+
+- Available through `python viewer/server.py` and `http://127.0.0.1:8000`.
+- Use the component review panel to select raw components by ID.
+- Use `Min area` to hide tiny raw components when the list is too noisy.
+- Use `Component IDs -> Selected` to label only the selected component.
+- Use `Component IDs -> Visible` to label the currently filtered component list.
+- Use `Components -> Boxes` and `Candidates -> Threshold 1/2/3` to inspect crisp, readable overlay boxes.
+- User confirmed Stage 3D is validated.
+
+**Successful human validation looks like:**
+
+- Selecting a component row highlights the matching raw lit-pixel island on the canvas.
+- The listed area, box size, and centroid are consistent with the highlighted component.
+- Component ID labels help identify components without obscuring the underlying DMD frame.
+- Switching frames clears stale selections and updates component, relationship, and candidate review panels.
+
+**Failure examples:**
+
+- A selected component row highlights the wrong island.
+- Component ID labels obscure so much of the frame that raw evidence cannot be inspected.
+- Component review controls break frame navigation, playback, exact display, binary display, relationship review, or candidate review.
+- The viewer implies semantic meanings such as score, player, credit, or initials.
+
+**Known limitations:**
+
+- Component IDs are visual review aids only.
+- Component review does not merge components or create regions.
+- Relationship and candidate panels remain evidence/proposal review tools only.
+- No final spatial region decisions, temporal tracking, sequence detection, mask classification, or masking exists.
+
+**Locked components changed:**
+
+- No Stage 0, Stage 1, Stage 2, Stage 3A, Stage 3B, or Stage 3C analysis behavior was changed.
+
+**Regression tests that must continue to pass:**
+
+- `tests/test_foundation.py`
+- `tests/test_frame_parser.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `tests/test_spatial_components.py`
+- `tests/test_spatial_relationships.py`
+- `tests/test_spatial_candidates.py`
+
+**Notes for future stages:**
+
+- Stage 4 may use the review tooling for validation, but coherent spatial region decisions belong to Stage 4.
 
 ---
 
@@ -2252,25 +2356,26 @@ is just as valuable as discovering an optimized mask.
 
 # 19. Current Approved Task
 
-**Current stage:** Stage 3C — Candidate Composite Boxes validation
+**Current stage:** Awaiting approval for Stage 4 — Spatial Region Discovery
 
-Stage 3C implementation is complete and automated tests pass. Codex must not begin Stage 3D until Stage 3C validation is complete and the user approves that next substage.
+Stage 3D is locked. Codex must not begin Stage 4 until the user explicitly approves that next stage.
 
-Validation should confirm:
+Stage 3D locked validation confirmed:
 
-- the `Candidates` selector displays thresholded candidate boxes;
-- candidate overlays are reviewable;
-- candidate boxes do not replace or hide raw component evidence;
-- candidates are understood as proposals only, not final regions or optimal boxes.
+- the component review panel updates as frames change;
+- selecting a component row highlights the matching raw component;
+- component ID labels help identify selected or visible components without hiding raw evidence;
+- component boxes and candidate threshold boxes are visually readable;
+- relationship and candidate review panels still work as validated in Stage 3B and Stage 3C;
+- candidates and relationships remain evidence/proposals only, not final regions.
 
 Do not implement final spatial region decisions, optimal bounding boxes, temporal tracking, sequence detection, mask classification, or masking yet.
 
-At Stage 3C lock:
+At Stage 4 approval:
 
-1. update the Stage 3C status in the Running Project State table to `LOCKED`;
-2. add a Stage 3C Completion Record or update the validation record to locked;
-3. update Current Approved Task to the next approved action only after user approval;
-4. provide the standard Stage 3C report;
-5. STOP.
+1. confirm Stage 4 scope before implementation;
+2. preserve locked Stage 3A, 3B, 3C, and 3D behavior unless a documented defect requires a targeted revision;
+3. implement spatial region discovery only;
+4. include operator-facing validation instructions when Stage 4 work is complete.
 
-Do not begin Stage 3C automatically.
+Do not begin Stage 4 automatically.
