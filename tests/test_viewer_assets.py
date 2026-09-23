@@ -54,6 +54,14 @@ class ViewerAssetTests(unittest.TestCase):
         self.assertIn('value="1"', html)
         self.assertIn('id="regionSummary"', html)
         self.assertIn('id="regionList"', html)
+        self.assertIn('id="regionSplitStatus"', html)
+        self.assertIn('id="regionSplitLimitInput"', html)
+        self.assertIn('id="regionSplitSummary"', html)
+        self.assertIn('id="regionSplitList"', html)
+        self.assertIn('id="refinedRegionStatus"', html)
+        self.assertIn('id="refinedRegionLimitInput"', html)
+        self.assertIn('id="refinedRegionSummary"', html)
+        self.assertIn('id="refinedRegionList"', html)
 
     def test_region_review_logic_is_selectable(self) -> None:
         script = self.read_asset("viewer.js")
@@ -62,6 +70,14 @@ class ViewerAssetTests(unittest.TestCase):
         self.assertIn("renderRegionReview", script)
         self.assertIn("selectRegion", script)
         self.assertIn("drawRegionOverlay", script)
+        self.assertIn("selectedRegionSplit", script)
+        self.assertIn("renderRegionSplitReview", script)
+        self.assertIn("selectRegionSplit", script)
+        self.assertIn("drawRegionSplitOverlay", script)
+        self.assertIn("selectedRefinedRegion", script)
+        self.assertIn("renderRefinedRegionReview", script)
+        self.assertIn("selectRefinedRegion", script)
+        self.assertIn("drawRefinedRegionOverlay", script)
 
 
 if __name__ == "__main__":

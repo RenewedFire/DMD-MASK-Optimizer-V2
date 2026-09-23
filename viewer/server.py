@@ -19,10 +19,14 @@ from src.spatial import (
     candidate_boxes_to_payload,
     components_to_payload,
     discover_spatial_regions,
+    find_region_split_evidence,
     find_component_relationships,
     find_lit_components,
     generate_candidate_boxes,
+    refined_regions_to_payload,
+    region_split_evidence_to_payload,
     regions_to_payload,
+    refine_spatial_regions,
     relationships_to_payload,
 )
 
@@ -55,6 +59,12 @@ def frame_to_payload(frame: DmdFrame) -> dict[str, object]:
     relationships = find_component_relationships(components)
     candidate_boxes = generate_candidate_boxes(components, relationships)
     regions = discover_spatial_regions(components, candidate_boxes)
+    region_split_evidence = find_region_split_evidence(
+        components,
+        regions,
+        binary_pixels=frame.binary_pixels,
+    )
+    refined_regions = refine_spatial_regions(regions, region_split_evidence)
     return {
         "frame_number": frame.frame_number,
         "header": frame.header,
@@ -67,6 +77,10 @@ def frame_to_payload(frame: DmdFrame) -> dict[str, object]:
         "candidate_boxes": candidate_boxes_to_payload(candidate_boxes),
         "region_count": len(regions),
         "regions": regions_to_payload(regions),
+        "region_split_count": len(region_split_evidence),
+        "region_splits": region_split_evidence_to_payload(region_split_evidence),
+        "refined_region_count": len(refined_regions),
+        "refined_regions": refined_regions_to_payload(refined_regions),
     }
 
 

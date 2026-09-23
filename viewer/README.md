@@ -46,3 +46,17 @@ candidate evidence and keep unconnected components as singleton regions. Use the
 region panel to inspect component membership, bounds, area, occupancy, and
 evidence-pair counts. These are spatial group proposals only, not semantic
 labels, masks, or temporal tracks.
+
+Stage 4B adds region split evidence. Split candidates identify internal
+low-occupancy horizontal corridors, vertical corridors, and negative-space
+horizontal bands inside first-pass regions. Use the Region Splits panel to
+select one split candidate and display its band boxes. Split evidence remains
+geometry-only.
+
+Stage 4C adds refined region proposals. The current conservative rule keeps
+unsplit first-pass regions and uses the strongest horizontal or negative-space
+split bands when they improve a first-pass region. The current revision also
+suppresses broad stacked slicing when the bands look like one coherent object,
+and may promote nested vertical split evidence inside short lower row-like
+bands. Use `Regions -> Refined` and the Refined Regions panel to inspect these
+proposals.

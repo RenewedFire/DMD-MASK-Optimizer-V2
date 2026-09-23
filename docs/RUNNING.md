@@ -107,3 +107,20 @@ unconnected components. Use the `Regions` selector and the region review panel
 to inspect grouped component membership, bounding boxes, lit area, occupancy,
 and evidence-pair counts. Regions are spatial group proposals only; they are not
 temporal tracks, semantic labels, masks, or final optimization results.
+
+Stage 4B adds region split evidence for first-pass regions that may be
+over-merged. Split detectors look for internal low-occupancy horizontal
+corridors, vertical corridors, and negative-space horizontal bands inside lit
+fields. Use `Regions -> Splits` or select a row in the Region Splits panel to
+inspect the proposed split bands. Split evidence is geometry-only and does not
+assign text, score, player, credit, name, or other semantic labels.
+
+Stage 4C adds conservative refined region proposals. Refined regions keep a
+first-pass region when no selected split evidence is useful, or replace that
+region with the bands from the strongest horizontal/negative-space split
+candidate. The current revision also suppresses broad horizontal slicing when it
+looks like one coherent object has been cut into stacked bands, and may promote
+nested vertical split evidence inside short lower row-like bands. Use
+`Regions -> Refined` and the Refined Regions panel to inspect the current
+refined proposals. These are still geometry-only region proposals, not temporal
+tracks, semantic labels, or masks.

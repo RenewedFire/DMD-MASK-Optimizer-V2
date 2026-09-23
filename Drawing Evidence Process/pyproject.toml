@@ -1,0 +1,9 @@
+[project]
+name = "dmd-region-evidence"
+version = "0.0.0"
+description = "Standalone human evidence collector for DMD region annotations."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

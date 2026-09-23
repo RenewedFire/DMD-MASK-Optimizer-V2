@@ -267,14 +267,14 @@ Final Recommendations
 | 3C | Candidate Composite Boxes | LOCKED | 2026-09-20 | Pair-based candidate boxes implemented with cumulative threshold review, selectable candidate rows, and passed human validation. |
 | 3D | Viewer Review Tools | LOCKED | 2026-09-20 | Raw component review panel, readable ID labels, crisp overlay boxes, and thicker review outlines passed human validation. |
 | 4A | First-Pass Region Proposals | LOCKED | 2026-09-20 | Transitive candidate-evidence region proposals implemented and validated as a useful first pass with known over-merge limitations. |
-| 4B | Region Split Evidence | NOT STARTED |  | Planned substage. Detect when first-pass regions should split into separate spatial bands, rows, or subregions. |
-| 4C | Region Merge / Refinement Rules | NOT STARTED |  | Planned substage. Refine split/merge decisions to avoid over-fragmenting coherent regions. |
+| 4B | Region Split Evidence | LOCKED | 2026-09-21 | Horizontal, vertical, and negative-space split evidence implemented, exposed in viewer/API, and passed human validation as review evidence. |
+| 4C | Region Merge / Refinement Rules | VALIDATING |  | Reopened with evidence: suppress coherent-object slicing and promote vertical evidence inside lower row-like bands; awaiting human validation before relock. |
 | 4D | Region Review Tools | NOT STARTED |  | Planned substage. Improve review of region membership, split evidence, and refinement decisions. |
 | 5 | Temporal Region Tracking | NOT STARTED |  |  |
 | 6 | Temporal Behavior Analysis | NOT STARTED |  |  |
 | 7 | Structural Continuity / Anchors | NOT STARTED |  |  |
 | 8 | Sequence Segmentation | NOT STARTED |  |  |
-| 9 | Human Ground Truth / Calibration | NOT STARTED |  |  |
+| 9 | Human Ground Truth / Calibration | IN PROGRESS |  | Split out into standalone `Drawing Evidence Process` evidence collector so human-verified regions can guide future detector evaluation and refinement. |
 | 10 | Sequence Identity and Occurrences | NOT STARTED |  |  |
 | 11 | Sequence Representation | NOT STARTED |  |  |
 | 12 | Related Sequence / Family Discovery | NOT STARTED |  |  |
@@ -604,12 +604,16 @@ Scope:
 - identify vertical bands and row-like separations;
 - identify internal blank corridors;
 - identify horizontal baseline/line evidence;
+- identify vertical corridor evidence inside bands where practical;
+- identify negative-space bands where meaningful information is represented by dark cutouts inside lit regions;
 - propose split candidates without assigning text/score/player/credit semantics;
 - preserve component membership traceability.
 
 Validation example:
 
 - `mixed_01.txt`, frame index `403` shown as viewer frame `404`, header `0x0009b72e`: the bottom `BILL PAXTON` line is visually separable but Stage 4A includes it in one broad first-pass region with nearby upper content. Stage 4B should produce evidence that this lower horizontal band can be reviewed separately.
+- `sample_dump.txt`, frame index `0`, header `0x000a58fc`: the bottom status row has meaningful left/middle/right geometry groups that require vertical corridor evidence for review.
+- `mixed_01.txt`, frame index `500` shown as viewer frame `501`, header `0x0009e320`: meaningful information is represented as negative space inside a lit field, so Stage 4B should produce negative-space band evidence even when lit-component splits do not apply.
 
 Lock condition:
 
@@ -649,6 +653,212 @@ Scope:
 Lock condition:
 
 - the operator can inspect region grouping and split/refinement reasoning quickly and understand what the detector is doing.
+
+---
+
+## Drawing Evidence Process — Standalone Human Evidence Collector
+
+### Current decision
+
+Main detector development is paused while a separate evidence-collection subprocess is built in `Drawing Evidence Process`.
+
+Reason:
+
+- recent Stage 4C work has been driven by individual visual examples;
+- that loop is useful but inefficient when region interpretation depends on human judgment;
+- future detector changes should be evaluated against accumulated human-verified examples rather than isolated screenshots.
+
+### Goal
+
+Create a standalone local tool for drawing human-verified rectangular regions on selected DMD frames.
+
+The collector is separate from the production detector. Its purpose is to create durable ground truth:
+
+```text
+exact dump/frame data
+human drawn region rectangles
+stable dump and frame identity
+persistent evidence history
+```
+
+### Required initial behavior
+
+- import or open supported VPinMAME DMD dumps;
+- scrub the dump non-sequentially with a timeline;
+- allow the operator to choose only useful evidence frames;
+- draw, move, resize, delete, and clear rectangular region boxes visually;
+- submit evidence explicitly;
+- persist submitted evidence immediately in SQLite;
+- reopen later with all prior evidence intact;
+- mark existing evidence on the timeline;
+- load existing boxes when returning to an evidence frame;
+- keep coordinates in native DMD frame space;
+- avoid exposing JSON, SQL, hashes, or raw coordinate editing to the operator.
+
+### Relationship to the main project
+
+The evidence collector creates human ground truth. The main DMD mask optimizer may later consume the evidence repository through an evaluation or training layer.
+
+Intended future loop:
+
+```text
+Human draws verified regions
+        ↓
+Evidence repository stores frame + boxes
+        ↓
+Detector runs on same frames
+        ↓
+Comparison reports detector-vs-human differences
+        ↓
+Rules, thresholds, or models are adjusted
+        ↓
+Detector is re-evaluated against the evidence repository
+```
+
+The collector must not depend on the current Stage 4 detector implementation at runtime. Reuse of stable parsing concepts is allowed, but detector logic must remain outside the annotation workflow.
+
+### Initial implementation boundary
+
+Build the collector in its own folder and start with:
+
+- SQLite schema and migrations;
+- dump and frame hashing;
+- evidence frame and region persistence;
+- isolated dump importer interface;
+- tests for hashing, persistence, evidence updates, and coordinate conversion.
+
+UI stages can then build on this foundation.
+
+### Success evidence for this subprocess
+
+A successful first usable version lets the operator:
+
+```text
+open dump
+scrub to useful frame
+draw boxes
+submit evidence
+move to another useful frame
+draw boxes
+submit evidence
+close the app
+reopen the app
+see previous evidence still present
+edit existing boxes
+continue collecting evidence
+```
+
+### Constraints
+
+- Do not require ML for evidence collection.
+- Do not force sequential frame annotation.
+- Do not silently discard or overwrite evidence.
+- Do not use the evidence collector to directly mutate Stage 4 detector rules.
+- Treat the SQLite repository as valuable ground-truth data.
+
+### Stage 1 foundation record — 2026-09-23
+
+**Status:** COMPLETE
+
+**What was implemented:**
+
+- Standalone Python package scaffold in `Drawing Evidence Process`.
+- SQLite schema foundation for dumps, evidence frames, regions, and schema migrations.
+- Dump identity by content hash.
+- Evidence frame identity by dump/frame pair.
+- Frame hash utility based on canonical native DMD pixel data.
+- Region persistence in native frame coordinates.
+- Evidence update behavior that replaces region boxes for an existing dump/frame entry instead of creating accidental duplicate evidence frames.
+- Original frame data storage with every submitted evidence frame.
+- Isolated DMD dump importer using the locked `0x########` header shape and 128x32 rows of `0`, `1`, `2`, and `3`.
+- Coordinate conversion helpers between scaled display rectangles and native DMD coordinates.
+- Automated tests for hashing, importer behavior, coordinate conversion, persistence, dump identity, and evidence updates.
+
+**Files added:**
+
+- `Drawing Evidence Process/pyproject.toml`
+- `Drawing Evidence Process/README.md`
+- `Drawing Evidence Process/sitecustomize.py`
+- `Drawing Evidence Process/src/dmd_evidence/`
+- `Drawing Evidence Process/tests/`
+- `Drawing Evidence Process/data/.gitkeep`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 10 tests.
+- From main project root: `python -m unittest discover -s tests`
+- Result: passed, 61 tests.
+
+**Successful human/developer validation looks like:**
+
+- The evidence collector tests pass from inside `Drawing Evidence Process`.
+- Creating evidence for a dump/frame persists a frame record and its regions.
+- Reopening the SQLite database preserves submitted evidence.
+- Submitting the same dump/frame again updates the existing evidence frame instead of creating an accidental duplicate.
+- Renaming a dump with the same content hash resolves to the same logical dump record.
+- Coordinate conversion preserves intended native 128x32 positions when the display is scaled.
+
+**Failure examples:**
+
+- Evidence disappears after closing and reopening the database.
+- The same dump/frame silently creates duplicate evidence entries during normal edits.
+- Filename changes create duplicate logical dumps despite identical content.
+- Stored region coordinates depend on display scaling instead of native DMD coordinates.
+- The importer accepts unsupported headers or malformed pixel rows without a clear error.
+
+**Next subprocess stage:**
+
+Stage 2 should add dump file selection/opening, frame indexing/display support, current frame display, frame count display, and previous/next stepping. Keep parser/importer logic isolated from UI code.
+
+### Stage 2 initial viewer record — 2026-09-23
+
+**Status:** COMPLETE
+
+**What was implemented:**
+
+- Tkinter-based local viewer entry point.
+- File-open control for supported text dump files.
+- DMD frame rendering at a fixed display scale.
+- Current dump name, frame count, source frame index, viewer frame number, and header display.
+- Previous/next frame stepping.
+- Left/right keyboard stepping.
+- UI rendering helpers separated from importer and repository logic.
+- Automated tests for rendering color mapping and scaled pixel rectangles.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/app.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/rendering.py`
+- `Drawing Evidence Process/tests/test_rendering.py`
+- `Drawing Evidence Process/README.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 12 tests.
+- App import smoke check passed.
+
+**Successful human validation looks like:**
+
+- Running `python -m dmd_evidence.app` from `Drawing Evidence Process` opens a local desktop window.
+- `Open Dump` loads a supported VPinMAME text dump.
+- The frame display visually matches the DMD dump.
+- The frame count, current frame number, zero-based frame index, and header update correctly.
+- `Prev`, `Next`, left arrow, and right arrow move one frame at a time.
+
+**Failure examples:**
+
+- Opening a valid dump displays an import error.
+- Pixel brightness values render with visibly incorrect colors.
+- Frame stepping changes the label but not the displayed image.
+- The viewer skips frames or reports incorrect frame totals.
+- UI code contains parsing or detector logic instead of calling the isolated importer.
+
+**Next subprocess stage:**
+
+Stage 3 should add full-dump timeline navigation, responsive scrubbing, exact frame navigation, +/- 1 and +/- 10 stepping, and optional playback. This remains navigation only; rectangle annotation begins in Stage 4 of the subprocess.
 
 ---
 
@@ -2380,6 +2590,259 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 - Stage 4B should add split evidence for over-merged first-pass regions before Stage 5 temporal tracking begins.
 
+## Stage 4B Validation Record — 2026-09-21
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Added geometry-only region split evidence for first-pass Stage 4A regions.
+- Added horizontal internal corridor detection based on low row occupancy inside a region.
+- Added vertical internal corridor detection based on low column occupancy inside regions or detected bands.
+- Added negative-space horizontal band detection for dark cutouts inside lit regions.
+- Added row-like split bands above and below detected corridor rows.
+- Added split band IDs.
+- Added split band component membership.
+- Added split band bounding boxes.
+- Added split band lit-pixel area and Y ranges.
+- Added crossing component IDs for components that contribute pixels to more than one proposed band.
+- Added region split evidence payloads to the viewer frame API.
+- Added region split counts to the viewer status area.
+- Added a `Regions -> Splits` overlay mode.
+- Added a Region Splits review panel with selectable split rows.
+- Added split-band overlay boxes for selected and visible split candidates.
+
+**Files modified:**
+
+- `src/spatial/regions.py`
+- `src/spatial/__init__.py`
+- `viewer/server.py`
+- `viewer/index.html`
+- `viewer/style.css`
+- `viewer/viewer.js`
+- `tests/test_spatial_regions.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `docs/RUNNING.md`
+- `viewer/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 54 tests.
+- `node --check viewer/viewer.js`
+- Result: passed.
+
+**Real-data validation target:**
+
+- `mixed_01.txt`, frame index `403` / viewer frame `404`, header `0x0009b72e`.
+- Stage 4B reports 1 split candidate for region `0`.
+- The split candidate identifies corridor row `23`.
+- The lower proposed band spans `y=24..31`, matching the visually separate lower horizontal band previously discussed.
+- Component `10` is reported as a crossing component because it contributes pixels to more than one proposed band.
+- `sample_dump.txt`, frame index `0`, header `0x000a58fc`.
+- Stage 4B reports vertical split candidates that expose left/middle/right geometry evidence inside bands.
+- `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`.
+- Stage 4B reports 1 negative-space split candidate with two horizontal dark bands spanning `y=4..13` and `y=20..29`.
+
+**Visual validation:**
+
+- Available through `python viewer/server.py` and `http://127.0.0.1:8000`.
+- Use `Regions -> Splits` to show split-band boxes.
+- Use the Region Splits panel to select one split candidate at a time.
+- For the known `BILL PAXTON` example, validate whether the lower split band is reviewable as a separate geometry-only band.
+- User confirmed the `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`, negative-space evidence block is solved.
+- User confirmed Stage 4B can be locked as split-evidence generation, with noisy split candidates accepted as evidence for Stage 4C to refine.
+
+**Successful human validation looks like:**
+
+- Split evidence appears when a first-pass region contains a clear internal low-occupancy horizontal corridor.
+- Vertical split evidence appears when a band contains meaningful low-occupancy column corridors.
+- Negative-space split evidence appears when meaningful structure is represented by dark cutouts inside a lit field.
+- The selected split bands visually correspond to plausible separated spatial bands.
+- Crossing components are reported instead of silently forcing ambiguous membership.
+- Split evidence remains review evidence only and does not assign semantic labels.
+
+**Failure examples:**
+
+- No split evidence appears for the known `mixed_01.txt` frame `403` / viewer frame `404` case.
+- Split bands are drawn in the wrong location.
+- The detector splits a dense coherent region with no meaningful internal corridor.
+- The viewer implies semantic meanings such as text, score, player, credit, actor name, or initials.
+
+**Known limitations:**
+
+- Stage 4B detects split evidence only; Stage 4C owns final refined region decisions.
+- Vertical split evidence is still review evidence and may include extra candidate bands that Stage 4C must refine.
+- Negative-space evidence identifies dark bands inside lit regions, but does not classify them semantically.
+- The Region Splits count is a count of split evidence candidates, not a count of final regions.
+- Split bands can share crossing components when a raw component spans more than one band.
+- No temporal tracking, sequence detection, semantic labels, mask classification, or masking exists.
+
+**Locked components changed:**
+
+- No Stage 0, Stage 1, Stage 2, Stage 3A, Stage 3B, Stage 3C, Stage 3D, or Stage 4A behavior was intentionally changed.
+
+**Regression tests that must continue to pass:**
+
+- `tests/test_foundation.py`
+- `tests/test_frame_parser.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `tests/test_spatial_components.py`
+- `tests/test_spatial_relationships.py`
+- `tests/test_spatial_candidates.py`
+- `tests/test_spatial_regions.py`
+
+**Notes for future stages:**
+
+- Stage 4C should decide how to refine or merge split bands into improved region proposals.
+
+## Stage 4C Validation Record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Added conservative refined spatial region proposals.
+- Added refined region IDs.
+- Added source first-pass region IDs.
+- Added optional source split IDs and source band IDs.
+- Added refinement reasons.
+- Added refined region component IDs where available.
+- Added refined region bounding boxes and area.
+- Added a refinement rule that keeps first-pass regions when no selected split evidence is useful.
+- Added a refinement rule that replaces a first-pass region with the strongest horizontal or negative-space split bands.
+- Added refined region payloads to the viewer frame API.
+- Added refined region counts to the viewer status area.
+- Added a `Regions -> Refined` overlay mode.
+- Added a Refined Regions review panel with selectable refined-region rows.
+
+**Files modified:**
+
+- `src/spatial/regions.py`
+- `src/spatial/__init__.py`
+- `viewer/server.py`
+- `viewer/index.html`
+- `viewer/style.css`
+- `viewer/viewer.js`
+- `tests/test_spatial_regions.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `docs/RUNNING.md`
+- `viewer/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 58 tests.
+- `node --check viewer/viewer.js`
+- Result: passed.
+
+**Real-data validation targets:**
+
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: Stage 4C refines 2 first-pass regions into 3 refined regions by keeping the left animation/art region and splitting the right text block into two geometry-only bands.
+- `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`: Stage 4C refines 1 first-pass region into 2 negative-space refined regions.
+
+**Visual validation:**
+
+- Available through `python viewer/server.py` and `http://127.0.0.1:8000`.
+- Use `Regions -> Refined` to inspect refined region boxes.
+- Use the Refined Regions panel to select one refined proposal at a time.
+- Compare with `Regions -> Boxes` and `Regions -> Splits` when a refined result needs explanation.
+- User confirmed refined regions look correct on both target examples: `Insert Coin.txt`, frame index `10`, and `mixed_01.txt`, frame index `500`.
+
+**Successful human validation looks like:**
+
+- Refined regions improve obvious Stage 4A over-merged regions.
+- Refined regions do not blindly accept every noisy Stage 4B split candidate.
+- Refined rows clearly identify whether they came from a kept first-pass region or a source split/band.
+- Refined regions remain geometry-only and do not assign semantic labels.
+
+**Failure examples:**
+
+- Refined regions simply duplicate every noisy split candidate.
+- Refined regions ignore a strong horizontal or negative-space split that was already validated in Stage 4B.
+- Refined boxes are drawn in the wrong location.
+- The viewer implies semantic meanings such as text, score, player, credit, actor name, or initials.
+
+**Known limitations:**
+
+- Stage 4C currently chooses horizontal or negative-space split bands conservatively.
+- Stage 4C does not yet use vertical split evidence as final refined regions by default.
+- Stage 4C does not use temporal behavior, sequence context, semantic labels, mask classification, or masking.
+
+**Locked components changed:**
+
+- No Stage 0, Stage 1, Stage 2, Stage 3A, Stage 3B, Stage 3C, Stage 3D, Stage 4A, or Stage 4B behavior was intentionally changed.
+
+**Regression tests that must continue to pass:**
+
+- `tests/test_foundation.py`
+- `tests/test_frame_parser.py`
+- `tests/test_viewer_server.py`
+- `tests/test_viewer_assets.py`
+- `tests/test_spatial_components.py`
+- `tests/test_spatial_relationships.py`
+- `tests/test_spatial_candidates.py`
+- `tests/test_spatial_regions.py`
+
+**Notes for future stages:**
+
+- Stage 4D should improve comparison/review of first-pass regions, split evidence, and refined regions.
+
+## Stage 4C Revision Record — 2026-09-23
+
+**Status:** VALIDATING
+
+**Why Stage 4C was reopened:**
+
+- Human review found that `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`, was over-splitting a coherent left-side object into stacked horizontal refined regions.
+- Human review found that `mixed_01.txt`, frame index `900` / viewer frame `901`, header `0x000a923c`, needed a broad upper score-like region plus more useful lower-row vertical split promotion.
+- These are Stage 4C refinement-selection defects, not Stage 4B split-evidence defects.
+
+**Revision behavior:**
+
+- Stage 4C still treats Stage 4B splits as evidence only.
+- Stage 4C suppresses horizontal slicing when several broad, strongly overlapping bands look like one coherent object being cut into slices.
+- Stage 4C prefers stronger coverage when choosing a primary split, so a fuller row split can beat a smaller negative-space split.
+- Stage 4C may promote nested vertical split evidence inside short lower row-like bands.
+- Stage 4C remains geometry-only. It must not label content as score, player, ball, credits, wind speed, names, or text.
+
+**Files modified for the revision:**
+
+- `src/spatial/regions.py`
+- `tests/test_spatial_regions.py`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 60 tests.
+- `node --check viewer/viewer.js`
+- Result: passed.
+
+**Revision validation targets:**
+
+- `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`: the left object should remain one large kept first-pass refined region, not multiple horizontal slices.
+- `mixed_01.txt`, frame index `900` / viewer frame `901`, header `0x000a923c`: the upper score-like area should remain a broad refined region, while lower row-like content should promote useful vertical refined regions.
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: should still refine the right text block into two horizontal bands while keeping the left animation/art region.
+- `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`: should still identify two negative-space refined regions.
+
+**Successful human validation looks like:**
+
+- The revision fixes the known over-split object case without breaking earlier 4C examples.
+- The revision produces more useful lower-row refined boxes on the score/status frame without claiming semantic meaning.
+- Refined regions are still proposals and may remain imperfect on transition frames or semantically complex layouts.
+
+**Known limitations after revision:**
+
+- Stage 4C still does not use temporal context, animation continuity, sequence identity, OCR, semantic labels, mask classification, or final mask scoring.
+- Transition frames may remain difficult because they can contain overlapping outgoing and incoming visual events.
+- Geometry-only refined regions may not always match human semantic grouping.
+
 ---
 
 # 16. Project Amendment Log
@@ -2579,24 +3042,49 @@ is just as valuable as discovering an optimized mask.
 
 # 19. Current Approved Task
 
-**Current stage:** Stage 4B — Region Split Evidence approved next
+**Current stage:** Drawing Evidence Process — standalone human evidence collector
 
-Stage 4A is locked as the first-pass region proposal generator. Codex must not begin Stage 5 until Stage 4B, 4C, and 4D are complete, validated, and locked.
+Main Stage 4 detector development is paused. Stage 4C remains reopened/validating, but active implementation has shifted to the standalone `Drawing Evidence Process` so human-verified evidence can be collected before further detector tuning.
 
-Stage 4B should address the demonstrated Stage 4A limitation:
+The Drawing Evidence Process must remain separate from the main region detector. Its completed foundation includes:
 
-- transitive first-pass region grouping may over-merge stacked or nearby content;
-- `mixed_01.txt`, frame index `403` / viewer frame `404`, header `0x0009b72e`, includes a bottom `BILL PAXTON` line that should be reviewable as a separate lower horizontal band;
-- split evidence must remain geometry-only and must not assign semantics such as score, player, credit, initials, actor names, or text labels.
+- SQLite repository creation and migrations;
+- dump records keyed by content hash;
+- evidence frame records keyed by dump/frame;
+- region records in native DMD coordinates;
+- original frame data retained with each submitted evidence frame;
+- CRUD/update behavior that preserves existing evidence;
+- tests for hashing, persistence, evidence update, and coordinate conversion.
 
-Do not implement Stage 4C refinement, Stage 4D review tooling, temporal tracking, sequence detection, semantic labels, mask classification, or masking unless explicitly approved.
+Its completed initial viewer includes:
 
-At Stage 4B completion:
+- local dump file opening;
+- current frame rendering;
+- frame count, frame index, and header display;
+- previous/next stepping.
 
-1. update the Stage 4B status in the Running Project State table;
-2. add a Stage 4B validation or completion record;
-3. update Current Approved Task to the next approved action only after user approval;
-4. provide operator-facing validation instructions, success examples, and failure examples;
-5. STOP.
+The next approved subprocess step is Stage 3 timeline navigation: full-dump slider scrubbing, exact frame navigation, +/- 1 and +/- 10 stepping, and optional playback.
 
-Do not begin Stage 5 automatically.
+Stage 4C revision validation is still pending and must not be relocked until the user explicitly validates it.
+
+Stage 4C revision validation must confirm:
+
+- `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`, keeps the left object as one large refined region instead of slicing it into horizontal bands;
+- `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`, keeps the right-side stacked content horizontally separated;
+- `mixed_01.txt`, frame index `900` / viewer frame `901`, header `0x000a923c`, keeps the upper score-like area broad and promotes useful lower-row vertical refined boxes;
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`, still refines to 3 geometry-only regions;
+- `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`, still refines to 2 negative-space geometry-only regions;
+- refined regions remain geometry-only and do not assign semantic labels.
+
+Do not implement Stage 4D review tooling, temporal tracking, sequence detection, semantic labels, mask classification, or masking unless explicitly approved after Stage 4C is relocked.
+
+Do not connect the Drawing Evidence Process directly to Stage 4 detector mutation. The evidence repository may later support evaluation, regression generation, rule tuning, or model training, but those are downstream integration tasks.
+
+At Stage 4C relock:
+
+1. update the Stage 4C revision record from `VALIDATING` to `LOCKED`;
+2. preserve locked Stage 4A and Stage 4B behavior unless a documented defect requires a targeted revision;
+3. document the exact human validation evidence used to relock Stage 4C;
+4. include operator-facing validation instructions in the completion response.
+
+Do not begin Stage 4D automatically.

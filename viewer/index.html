@@ -62,6 +62,8 @@
             <option value="off">Off</option>
             <option value="boxes">Boxes</option>
             <option value="selected">Selected</option>
+            <option value="splits">Splits</option>
+            <option value="refined">Refined</option>
           </select>
         </label>
       </section>
@@ -74,6 +76,8 @@
         <span id="relationshipStatus"></span>
         <span id="candidateStatus"></span>
         <span id="regionStatus"></span>
+        <span id="regionSplitStatus"></span>
+        <span id="refinedRegionStatus"></span>
       </section>
 
       <div class="canvasWrap">
@@ -148,6 +152,30 @@
         <div id="regionSummary" class="regionSummary"></div>
         <div class="reviewListLabel">Regions</div>
         <div id="regionList" class="regionList"></div>
+      </section>
+
+      <section class="regionSplitPanel" aria-label="Region split evidence review">
+        <div class="regionSplitControls">
+          <label>
+            Limit
+            <input id="regionSplitLimitInput" type="number" min="1" max="200" value="40">
+          </label>
+        </div>
+        <div id="regionSplitSummary" class="regionSplitSummary"></div>
+        <div class="reviewListLabel">Region Splits</div>
+        <div id="regionSplitList" class="regionSplitList"></div>
+      </section>
+
+      <section class="refinedRegionPanel" aria-label="Refined region review">
+        <div class="refinedRegionControls">
+          <label>
+            Limit
+            <input id="refinedRegionLimitInput" type="number" min="1" max="200" value="40">
+          </label>
+        </div>
+        <div id="refinedRegionSummary" class="refinedRegionSummary"></div>
+        <div class="reviewListLabel">Refined Regions</div>
+        <div id="refinedRegionList" class="refinedRegionList"></div>
       </section>
       <p id="errorMessage" class="error" role="alert"></p>
     </main>

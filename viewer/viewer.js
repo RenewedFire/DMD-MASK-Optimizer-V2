@@ -12,6 +12,8 @@ const state = {
   selectedRelationship: null,
   selectedCandidate: null,
   selectedRegion: null,
+  selectedRegionSplit: null,
+  selectedRefinedRegion: null,
   playing: false,
   timer: null,
 };
@@ -35,6 +37,8 @@ const componentStatus = document.querySelector("#componentStatus");
 const relationshipStatus = document.querySelector("#relationshipStatus");
 const candidateStatus = document.querySelector("#candidateStatus");
 const regionStatus = document.querySelector("#regionStatus");
+const regionSplitStatus = document.querySelector("#regionSplitStatus");
+const refinedRegionStatus = document.querySelector("#refinedRegionStatus");
 const componentLimitInput = document.querySelector("#componentLimitInput");
 const componentMinAreaInput = document.querySelector("#componentMinAreaInput");
 const componentSummary = document.querySelector("#componentSummary");
@@ -52,6 +56,12 @@ const regionLimitInput = document.querySelector("#regionLimitInput");
 const regionMinComponentsInput = document.querySelector("#regionMinComponentsInput");
 const regionSummary = document.querySelector("#regionSummary");
 const regionList = document.querySelector("#regionList");
+const regionSplitLimitInput = document.querySelector("#regionSplitLimitInput");
+const regionSplitSummary = document.querySelector("#regionSplitSummary");
+const regionSplitList = document.querySelector("#regionSplitList");
+const refinedRegionLimitInput = document.querySelector("#refinedRegionLimitInput");
+const refinedRegionSummary = document.querySelector("#refinedRegionSummary");
+const refinedRegionList = document.querySelector("#refinedRegionList");
 const errorMessage = document.querySelector("#errorMessage");
 const canvas = document.querySelector("#dmdCanvas");
 const context = canvas.getContext("2d");
@@ -118,6 +128,8 @@ async function loadFrame(frameNumber) {
   state.selectedRelationship = null;
   state.selectedCandidate = null;
   state.selectedRegion = null;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = null;
   state.frameNumber = payload.frame.frame_number;
   frameInput.value = state.frameNumber;
   frameStatus.textContent = `Frame ${state.frameNumber + 1} of ${state.frameCount}`;
@@ -126,12 +138,16 @@ async function loadFrame(frameNumber) {
   relationshipStatus.textContent = `${payload.frame.relationship_count} relationships`;
   candidateStatus.textContent = `${payload.frame.candidate_box_count} candidate boxes`;
   regionStatus.textContent = `${payload.frame.region_count ?? 0} regions`;
+  regionSplitStatus.textContent = `${payload.frame.region_split_count ?? 0} region splits`;
+  refinedRegionStatus.textContent = `${payload.frame.refined_region_count ?? 0} refined regions`;
   state.currentFrame = payload.frame;
   drawFrame(payload.frame);
   renderComponentReview(payload.frame);
   renderRelationshipReview(payload.frame);
   renderCandidateReview(payload.frame);
   renderRegionReview(payload.frame);
+  renderRegionSplitReview(payload.frame);
+  renderRefinedRegionReview(payload.frame);
 }
 
 function drawFrame(frame) {
@@ -158,6 +174,8 @@ function drawAnalysisOverlay(frame) {
   drawComponentOverlay(frame.components || []);
   drawCandidateOverlay(frame.candidate_boxes || []);
   drawRegionOverlay(frame.regions || []);
+  drawRegionSplitOverlay(frame.region_splits || []);
+  drawRefinedRegionOverlay(frame.refined_regions || []);
 }
 
 function drawComponentOverlay(components) {
@@ -344,6 +362,52 @@ function drawRegionOverlay(regions) {
   }
 }
 
+function drawRegionSplitOverlay(regionSplits) {
+  if (state.regionOverlay !== "splits") {
+    return;
+  }
+
+  const selectedSplits = filteredRegionSplits(regionSplits);
+  for (const split of selectedSplits) {
+    if (isSelectedRegionSplit(split)) {
+      continue;
+    }
+    for (const band of split.bands) {
+      addOverlayBox(band.bounding_box, "splitBandBox");
+    }
+  }
+
+  if (state.selectedRegionSplit) {
+    const split = regionSplits.find(isSelectedRegionSplit);
+    if (split) {
+      for (const band of split.bands) {
+        addOverlayBox(band.bounding_box, "selectedSplitBandBox");
+      }
+    }
+  }
+}
+
+function drawRefinedRegionOverlay(refinedRegions) {
+  if (state.regionOverlay !== "refined") {
+    return;
+  }
+
+  const selectedRegions = filteredRefinedRegions(refinedRegions);
+  for (const region of selectedRegions) {
+    if (isSelectedRefinedRegion(region)) {
+      continue;
+    }
+    addOverlayBox(region.bounding_box, "refinedRegionBox");
+  }
+
+  if (state.selectedRefinedRegion) {
+    const region = refinedRegions.find(isSelectedRefinedRegion);
+    if (region) {
+      addOverlayBox(region.bounding_box, "selectedRefinedRegionBox");
+    }
+  }
+}
+
 function addOverlayBox(box, className, color = "") {
   const element = document.createElement("div");
   element.className = `overlayBox ${className}`;
@@ -486,12 +550,16 @@ function selectComponent(componentId) {
   state.selectedRelationship = null;
   state.selectedCandidate = null;
   state.selectedRegion = null;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
     renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 }
 
@@ -527,12 +595,16 @@ function selectRelationship(relationship) {
   state.selectedRelationship = relationship;
   state.selectedCandidate = null;
   state.selectedRegion = null;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
     renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 }
 
@@ -612,12 +684,16 @@ function selectCandidate(candidate) {
   state.selectedCandidate = candidate;
   state.selectedRelationship = null;
   state.selectedRegion = null;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 }
 
@@ -727,12 +803,16 @@ function selectRegion(region) {
   state.selectedRelationship = null;
   state.selectedCandidate = null;
   state.selectedRegion = region;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = null;
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderComponentReview(state.currentFrame);
     renderRelationshipReview(state.currentFrame);
     renderCandidateReview(state.currentFrame);
     renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 }
 
@@ -771,6 +851,184 @@ function regionSummaryText(region) {
     `lit=${region.area}`,
     `occupancy=${formatNumber(region.occupancy_ratio)}`,
     `evidence pairs=${region.evidence_pairs.length}`,
+  ].join(" | ");
+}
+
+function renderRegionSplitReview(frame) {
+  const allSplits = frame.region_splits || [];
+  const filtered = filteredRegionSplits(allSplits);
+
+  regionSplitSummary.textContent =
+    `${filtered.length} shown of ${allSplits.length} split candidates `
+    + `(limit ${regionSplitLimit()})`;
+
+  regionSplitList.innerHTML = "";
+  for (const split of filtered) {
+    const item = document.createElement("div");
+    item.className = "regionSplitItem";
+    if (isSelectedRegionSplit(split)) {
+      item.classList.add("selected");
+    }
+    item.tabIndex = 0;
+    item.addEventListener("click", () => selectRegionSplit(split));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectRegionSplit(split);
+      }
+    });
+
+    const pair = document.createElement("div");
+    pair.className = "regionSplitPair";
+    pair.textContent = `S${split.split_id}`;
+
+    const details = document.createElement("div");
+    details.className = "regionSplitDetails";
+    details.textContent = regionSplitSummaryText(split);
+
+    item.append(pair, details);
+    regionSplitList.append(item);
+  }
+}
+
+function selectRegionSplit(split) {
+  state.selectedComponentId = null;
+  state.selectedRelationship = null;
+  state.selectedCandidate = null;
+  state.selectedRegion = null;
+  state.selectedRegionSplit = split;
+  state.selectedRefinedRegion = null;
+  state.regionOverlay = "splits";
+  regionOverlaySelect.value = "splits";
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+    renderRelationshipReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
+  }
+}
+
+function isSelectedRegionSplit(split) {
+  return state.selectedRegionSplit && split.split_id === state.selectedRegionSplit.split_id;
+}
+
+function filteredRegionSplits(splits) {
+  return splits
+    .sort((left, right) => (
+      left.region_id - right.region_id
+      || right.band_count - left.band_count
+      || left.split_id - right.split_id
+    ))
+    .slice(0, regionSplitLimit());
+}
+
+function regionSplitLimit() {
+  return Math.max(1, Number(regionSplitLimitInput.value) || 1);
+}
+
+function regionSplitSummaryText(split) {
+  const corridors = split.corridor_rows.join(",");
+  const crossings = split.crossing_component_ids.length
+    ? `crossing ${split.crossing_component_ids.join("+")}`
+    : "no crossing components";
+  return [
+    `region R${split.region_id}`,
+    `${split.band_count} bands`,
+    `corridors ${corridors}`,
+    crossings,
+    split.reason,
+  ].join(" | ");
+}
+
+function renderRefinedRegionReview(frame) {
+  const allRegions = frame.refined_regions || [];
+  const filtered = filteredRefinedRegions(allRegions);
+
+  refinedRegionSummary.textContent =
+    `${filtered.length} shown of ${allRegions.length} refined regions `
+    + `(limit ${refinedRegionLimit()})`;
+
+  refinedRegionList.innerHTML = "";
+  for (const region of filtered) {
+    const item = document.createElement("div");
+    item.className = "refinedRegionItem";
+    if (isSelectedRefinedRegion(region)) {
+      item.classList.add("selected");
+    }
+    item.tabIndex = 0;
+    item.addEventListener("click", () => selectRefinedRegion(region));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectRefinedRegion(region);
+      }
+    });
+
+    const pair = document.createElement("div");
+    pair.className = "refinedRegionPair";
+    pair.textContent = `F${region.refined_region_id}`;
+
+    const details = document.createElement("div");
+    details.className = "refinedRegionDetails";
+    details.textContent = refinedRegionSummaryText(region);
+
+    item.append(pair, details);
+    refinedRegionList.append(item);
+  }
+}
+
+function selectRefinedRegion(region) {
+  state.selectedComponentId = null;
+  state.selectedRelationship = null;
+  state.selectedCandidate = null;
+  state.selectedRegion = null;
+  state.selectedRegionSplit = null;
+  state.selectedRefinedRegion = region;
+  state.regionOverlay = "refined";
+  regionOverlaySelect.value = "refined";
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderComponentReview(state.currentFrame);
+    renderRelationshipReview(state.currentFrame);
+    renderCandidateReview(state.currentFrame);
+    renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
+  }
+}
+
+function isSelectedRefinedRegion(region) {
+  return state.selectedRefinedRegion
+    && region.refined_region_id === state.selectedRefinedRegion.refined_region_id;
+}
+
+function filteredRefinedRegions(regions) {
+  return regions
+    .sort((left, right) => (
+      left.source_region_id - right.source_region_id
+      || left.refined_region_id - right.refined_region_id
+    ))
+    .slice(0, refinedRegionLimit());
+}
+
+function refinedRegionLimit() {
+  return Math.max(1, Number(refinedRegionLimitInput.value) || 1);
+}
+
+function refinedRegionSummaryText(region) {
+  const box = region.bounding_box;
+  const source = region.source_split_id === null
+    ? `source R${region.source_region_id}`
+    : `source R${region.source_region_id}/S${region.source_split_id}/B${region.source_band_id}`;
+  return [
+    source,
+    region.refinement_reason,
+    `components ${region.component_ids.join("+") || "none"}`,
+    `box ${box.width}x${box.height} at ${box.min_x},${box.min_y}`,
+    `area=${region.area}`,
   ].join(" | ");
 }
 
@@ -880,6 +1138,8 @@ regionOverlaySelect.addEventListener("change", () => {
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderRegionReview(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 });
 relationshipDistanceInput.addEventListener("input", () => {
@@ -937,6 +1197,20 @@ regionMinComponentsInput.addEventListener("input", () => {
   if (state.currentFrame) {
     drawAnalysisOverlay(state.currentFrame);
     renderRegionReview(state.currentFrame);
+  }
+});
+regionSplitLimitInput.addEventListener("input", () => {
+  state.selectedRegionSplit = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderRegionSplitReview(state.currentFrame);
+  }
+});
+refinedRegionLimitInput.addEventListener("input", () => {
+  state.selectedRefinedRegion = null;
+  if (state.currentFrame) {
+    drawAnalysisOverlay(state.currentFrame);
+    renderRefinedRegionReview(state.currentFrame);
   }
 });
 playButton.addEventListener("click", () => {
