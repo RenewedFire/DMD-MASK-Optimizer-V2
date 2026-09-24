@@ -21,6 +21,7 @@ class EvidenceFrameRecord:
     frame_width: int
     frame_height: int
     frame_data: str
+    descriptor: str
 
 
 @dataclass(frozen=True)
@@ -32,3 +33,14 @@ class RegionRecord:
     width: int
     height: int
     display_order: int
+
+
+@dataclass(frozen=True)
+class EvidenceSummaryRecord:
+    evidence_frame_id: int
+    dump_id: int
+    filename: str
+    source_frame_index: int
+    frame_hash: str
+    descriptor: str
+    region_count: int

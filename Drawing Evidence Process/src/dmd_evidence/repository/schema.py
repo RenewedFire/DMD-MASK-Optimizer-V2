@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS evidence_frames (
     frame_width INTEGER NOT NULL,
     frame_height INTEGER NOT NULL,
     frame_data TEXT NOT NULL,
+    descriptor TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(dump_id, source_frame_index),

@@ -758,7 +758,7 @@ continue collecting evidence
 
 ### Stage 1 foundation record — 2026-09-23
 
-**Status:** COMPLETE
+**Status:** LOCKED
 
 **What was implemented:**
 
@@ -789,6 +789,7 @@ continue collecting evidence
 - Result: passed, 10 tests.
 - From main project root: `python -m unittest discover -s tests`
 - Result: passed, 61 tests.
+- Human validation: confirmed by user on 2026-09-23 as part of "Process is validated."
 
 **Successful human/developer validation looks like:**
 
@@ -807,13 +808,13 @@ continue collecting evidence
 - Stored region coordinates depend on display scaling instead of native DMD coordinates.
 - The importer accepts unsupported headers or malformed pixel rows without a clear error.
 
-**Next subprocess stage:**
+**Lock note:**
 
-Stage 2 should add dump file selection/opening, frame indexing/display support, current frame display, frame count display, and previous/next stepping. Keep parser/importer logic isolated from UI code.
+The repository foundation is locked as the durable storage base for later evidence-collection UI stages.
 
 ### Stage 2 initial viewer record — 2026-09-23
 
-**Status:** COMPLETE
+**Status:** LOCKED
 
 **What was implemented:**
 
@@ -839,10 +840,11 @@ Stage 2 should add dump file selection/opening, frame indexing/display support, 
 - From `Drawing Evidence Process`: `python -m unittest discover -s tests`
 - Result: passed, 12 tests.
 - App import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as part of "Process is validated."
 
 **Successful human validation looks like:**
 
-- Running `python -m dmd_evidence.app` from `Drawing Evidence Process` opens a local desktop window.
+- Running `python run.py` from `Drawing Evidence Process` opens a local desktop window.
 - `Open Dump` loads a supported VPinMAME text dump.
 - The frame display visually matches the DMD dump.
 - The frame count, current frame number, zero-based frame index, and header update correctly.
@@ -859,6 +861,440 @@ Stage 2 should add dump file selection/opening, frame indexing/display support, 
 **Next subprocess stage:**
 
 Stage 3 should add full-dump timeline navigation, responsive scrubbing, exact frame navigation, +/- 1 and +/- 10 stepping, and optional playback. This remains navigation only; rectangle annotation begins in Stage 4 of the subprocess.
+
+### Stage 3 timeline navigation record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Full-dump timeline slider.
+- Slider scrubbing updates the displayed frame.
+- Exact frame entry and `Jump` button.
+- `-1`, `+1`, `-10`, and `+10` stepping controls.
+- Left/right arrow keys for single-frame stepping.
+- Shift+left/right arrow keys for 10-frame stepping.
+- Play/Pause control for forward playback.
+- Timeline/navigation helper functions separated from the Tkinter window for automated testing.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/navigation.py`
+- `Drawing Evidence Process/tests/test_navigation.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 15 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "stage validated."
+
+**Successful human validation looks like:**
+
+- Running `python run.py` opens the evidence collector.
+- Loading a dump enables the timeline and navigation controls.
+- Dragging the timeline rapidly changes the displayed frame.
+- The current frame label, zero-based index, header, jump entry, and DMD image stay synchronized.
+- `-1`, `+1`, `-10`, `+10`, left/right arrows, and Shift+left/right arrows move to the expected frames without going below the first frame or beyond the final frame.
+- Entering a one-based frame number and pressing `Jump` moves to that frame.
+- `Play` advances frames automatically and becomes `Pause` while playing.
+- Playback stops cleanly at the final frame.
+
+**Failure examples:**
+
+- Slider movement updates the label but not the image.
+- The jump box uses zero-based numbering instead of human-visible one-based numbering.
+- Navigation controls can move outside the valid frame range.
+- Playback continues after the final frame or leaves the button stuck as `Pause`.
+- Timeline code writes evidence or changes annotations. Stage 3 is navigation only.
+
+**Next subprocess stage:**
+
+Stage 4 should add rectangle annotation: create, select, move, resize, delete, clear, and scale-correct native-coordinate storage.
+
+### Stage 4 rectangle annotation record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Click-drag creation of rectangular annotations on the DMD canvas.
+- Reverse-drag normalization, so boxes can be drawn in any direction.
+- Box selection by clicking inside an existing rectangle.
+- Selected-box move by dragging the box body.
+- Selected-box resize by dragging corner handles.
+- `Delete Box` button and Delete-key removal of the selected rectangle.
+- `Clear Boxes` button for the current frame's draft annotations.
+- Per-frame in-memory draft annotations, so navigating away and back during the session preserves unsaved boxes for that frame.
+- Annotation overlay redraw after frame render, navigation, selection, movement, resizing, deletion, and clearing.
+- Native 128x32 coordinate conversion for all annotation geometry.
+- Annotation helper functions separated from Tkinter for automated testing.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/annotations.py`
+- `Drawing Evidence Process/tests/test_annotations.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 20 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Validation is successful."
+
+**Successful human validation looks like:**
+
+- Running `python run.py` opens the evidence collector.
+- Loading a dump still supports all locked Stage 3 navigation behavior.
+- Click-dragging on the DMD frame creates a yellow rectangle over the intended visual region.
+- Clicking a rectangle selects it and shows a green outline with corner handles.
+- Dragging the selected rectangle body moves it without changing its size.
+- Dragging a selected corner handle resizes the rectangle.
+- Drawing from lower-right to upper-left still creates a valid rectangle.
+- `Delete Box` removes only the selected rectangle.
+- `Clear Boxes` removes all draft rectangles for the current frame.
+- Navigating away from a frame and back restores that frame's draft boxes during the same session.
+- No evidence is written to SQLite yet. Stage 4 is annotation editing only.
+
+**Failure examples:**
+
+- Boxes appear offset from the pointer or drift after navigation.
+- Resizing changes the wrong corner.
+- Moving a box changes its size.
+- Delete removes the wrong rectangle.
+- Clear removes boxes from other frames.
+- Navigation stops working after drawing boxes.
+- Stage 4 writes evidence to the repository before explicit evidence submission exists.
+
+**Next subprocess stage:**
+
+Stage 5 should add explicit evidence submission from the UI: submit/update the current frame and its rectangles into SQLite, commit immediately, update evidence counts, and prepare timeline evidence markers.
+
+### Stage 5 evidence submission record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Persistent `EvidenceService` wrapper around the SQLite repository for UI use.
+- Repository initialization when the evidence collector starts.
+- Dump registration by content hash when a dump is opened.
+- `Submit Evidence` button in the viewer.
+- Submit/update behavior for the current frame and its current rectangles.
+- Immediate SQLite commit through the repository transaction.
+- Evidence frame count display in the dump status line.
+- Repository-wide status display with total dumps, evidence frames, and boxes in SQLite.
+- Green evidence markers below the timeline for frames submitted from the current dump.
+- Clickable evidence markers that jump to the nearest saved frame.
+- Visible `Saved Frames` list for the currently loaded dump.
+- Clear current-dump scope label for saved-frame list.
+- Saved-frame list rows show one-based frame number, zero-based index, and saved box count.
+- Selecting a saved-frame row jumps to that evidence frame.
+- Repository-wide `All Repository Evidence` list showing saved frames across all dumps.
+- Selecting repository evidence from the current dump jumps the normal viewer to that frame.
+- Selecting repository evidence from another dump opens the stored SQLite frame in repository preview mode.
+- Repository preview mode displays saved boxes and allows edit/resubmit back to the same evidence record.
+- Saved evidence-frame indices reload when opening a known dump.
+- Saved boxes load automatically when navigating to a submitted frame.
+- Submitted boxes remain editable as draft annotations after reload.
+- Resizable application window with canvas scaling that preserves 128x32 native coordinate mapping.
+- DMD frame rendering uses one scaled image item instead of thousands of canvas pixel rectangles, improving annotation responsiveness.
+- `F11` fullscreen toggle and `Esc` fullscreen exit.
+- UI close handler closes the repository connection.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/services/__init__.py`
+- `Drawing Evidence Process/src/dmd_evidence/services/evidence_service.py`
+- `Drawing Evidence Process/src/dmd_evidence/repository/__init__.py`
+- `Drawing Evidence Process/src/dmd_evidence/repository/database.py`
+- `Drawing Evidence Process/src/dmd_evidence/repository/models.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/rendering.py`
+- `Drawing Evidence Process/tests/test_evidence_service.py`
+- `Drawing Evidence Process/tests/test_navigation.py`
+- `Drawing Evidence Process/tests/test_repository.py`
+- `Drawing Evidence Process/tests/test_rendering.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 28 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Validation of both requested repository-wide functions is complete."
+
+**Successful human validation looks like:**
+
+- Running `python run.py` opens the evidence collector.
+- Loading a dump still supports locked navigation and annotation behavior.
+- Drawing one or more boxes and pressing `Submit Evidence` immediately updates the evidence-frame count.
+- Repository totals remain visible when switching dumps, so evidence from other dumps is not mistaken for deleted data.
+- A green marker appears under the timeline at the submitted frame.
+- The submitted frame appears in the `Saved Frames For Current Dump` list.
+- Clicking a green marker jumps to the nearest saved frame.
+- Selecting a `Saved Frames` row jumps to that saved frame.
+- Maximizing or resizing the window enlarges the DMD canvas.
+- Drawing, moving, and resizing boxes still aligns with DMD pixels after maximizing.
+- Creating, moving, and resizing boxes remains responsive at larger window sizes.
+- `F11` toggles fullscreen and `Esc` exits fullscreen.
+- Selecting a row in `All Repository Evidence` shows that saved frame.
+- If the row belongs to the current dump, the normal viewer jumps to that frame.
+- If the row belongs to another dump, repository preview mode displays the stored SQLite frame and boxes without needing to load the original dump file.
+- Editing boxes in repository preview mode and pressing `Submit Evidence` updates that same evidence record.
+- Navigating away and back to the submitted frame reloads the saved boxes.
+- Editing boxes on the same frame and pressing `Submit Evidence` updates the existing evidence instead of creating a duplicate frame entry.
+- Closing and reopening the app, then loading the same dump, restores the submitted frame markers and saved boxes.
+- The SQLite database is created at `Drawing Evidence Process/data/region_evidence.sqlite`.
+
+**Failure examples:**
+
+- Pressing `Submit Evidence` appears successful but nothing survives app restart.
+- Loading a different dump makes the current-dump list empty without any repository-wide indication that earlier evidence still exists.
+- Submitted boxes reload offset, scaled incorrectly, or attached to the wrong frame.
+- Re-submitting a frame creates duplicate evidence-frame entries for the same dump/frame pair.
+- Evidence markers do not appear after submission.
+- The `Saved Frames For Current Dump` list does not match the SQLite evidence for the current dump.
+- Selecting a saved frame jumps to the wrong frame.
+- Maximizing the window visually scales the frame but causes boxes to save offset or incorrectly sized.
+- Annotation drawing becomes sluggish enough to cause accidental box placement.
+- `All Repository Evidence` omits saved frames that exist in SQLite.
+- Selecting repository evidence from another dump requires the original dump file to be loaded.
+- Editing repository preview evidence creates a duplicate instead of updating the selected evidence record.
+- Opening a renamed dump with identical content loses existing evidence identity.
+- Submission breaks annotation editing or Stage 3 navigation.
+
+**Next subprocess stage:**
+
+Stage 6 should harden reopen/edit behavior: verify existing dumps are recognized by hash, evidence markers load reliably on startup/open, existing boxes can be edited and saved after restart, and user-facing status/errors make persistence state clear.
+
+---
+
+### Stage 6 reopen/edit hardening record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Known-dump detection before upsert, based on dump content hash.
+- Service-level flag indicating whether the last opened dump was already known.
+- UI status line that reports ready state, known/new dump load state, saved frame count, successful saves, successful repository-preview updates, and submit failures.
+- Reopen tests proving a renamed dump with the same content hash restores saved frame indices and saved boxes.
+- Repository-preview update tests proving edits persist after closing and reopening the repository.
+- Canvas resize repaint now works for repository-preview frames as well as loaded dump frames.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/repository/database.py`
+- `Drawing Evidence Process/src/dmd_evidence/services/evidence_service.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/tests/test_evidence_service.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 30 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Successful validation."
+
+**Successful human validation looks like:**
+
+- Open a dump that already has submitted evidence and the status line reports it as a known dump.
+- The current-dump saved-frame list and timeline markers appear immediately after opening the known dump.
+- Saved boxes reload when navigating to a saved frame after app restart.
+- Editing a saved frame after restart and pressing `Submit Evidence` updates the same evidence record.
+- Selecting repository evidence from another dump still opens repository preview mode.
+- Editing repository-preview boxes and pressing `Submit Evidence` remains persisted after restart.
+- Status text changes after save/update actions so the operator knows persistence succeeded.
+
+**Failure examples:**
+
+- A dump with the same content hash is treated as unrelated after rename.
+- Evidence markers or saved boxes do not reload after restarting the app.
+- Editing and resubmitting existing evidence after restart creates duplicate records.
+- Repository-preview edits appear to save but are gone after restart.
+- Status text implies a save succeeded when the repository write failed.
+
+**Next subprocess stage:**
+
+Stage 7 should improve the evidence browser: stronger grouping/filtering by dump, easier repository-level review, and optional previews/thumbnails if useful.
+
+---
+
+### Stage 7 evidence browser improvements record — 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Repository dump listing query for browser filter options.
+- Service method to list all known dumps.
+- `All Repository Evidence` dump filter dropdown.
+- Text search box for repository evidence rows.
+- Refresh button for repository browser data.
+- Optional evidence descriptor field saved with each submitted evidence frame.
+- Descriptor display in repository browser rows.
+- Descriptor editing when resubmitting current-dump or repository-preview evidence.
+- Browser filtering by dump, descriptor, filename, one-based frame number, zero-based index, and box count.
+- Testable browser filtering helper outside Tkinter.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/repository/database.py`
+- `Drawing Evidence Process/src/dmd_evidence/repository/models.py`
+- `Drawing Evidence Process/src/dmd_evidence/repository/schema.py`
+- `Drawing Evidence Process/src/dmd_evidence/services/evidence_service.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/browser.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/tests/test_browser.py`
+- `Drawing Evidence Process/tests/test_evidence_service.py`
+- `Drawing Evidence Process/tests/test_repository.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Result: passed, 35 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Validation Passed."
+
+**Successful human validation looks like:**
+
+- `All Repository Evidence` still lists evidence across all dumps by default.
+- Selecting a dump from the filter dropdown limits the list to that dump.
+- Entering a descriptor before `Submit Evidence` saves it with that evidence frame.
+- Reopening or selecting saved evidence restores the descriptor for editing.
+- Typing a search term filters visible evidence rows.
+- Searching by descriptor, filename, `frame N`, `index N`, or box count text finds expected rows.
+- Selecting a filtered row still opens that evidence correctly.
+- Pressing `Refresh` updates the browser list after evidence is added or edited.
+
+**Failure examples:**
+
+- Dump filter hides evidence from the selected dump.
+- Text filter searches stale data or ignores visible row text.
+- Descriptor is not saved, not restored, or not searchable.
+- Selecting a filtered row opens the wrong evidence.
+- Refresh clears the selected dump filter unexpectedly.
+- Browser filtering breaks repository preview or current-dump jumping.
+
+**Next subprocess stage:**
+
+Stage 8 should add duplicate awareness using frame hashes: detect exact repeated frames, warn unobtrusively, and allow navigation/reuse without blocking deliberate submissions.
+
+---
+
+### Stage 8 duplicate awareness record - 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Service-level exact-frame lookup using canonical frame hashes.
+- Current-frame duplicate notice in the evidence collector UI.
+- `Open First Match` control for jumping to matching evidence in the current dump or previewing matching evidence from another dump.
+- Duplicate detection remains non-blocking; users can still submit deliberate evidence for the current frame.
+- README documentation for exact-frame match behavior.
+- Unit coverage confirming matches are based on native pixel content, not source index or header.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/services/evidence_service.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/tests/test_evidence_service.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Launcher import smoke check: `python -c "import run; print('launcher import ok')"`
+- Result: passed, 36 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Validation Complete."
+
+**Successful human validation looks like:**
+
+- On a frame with no exact repository match, the duplicate row says `Exact frame matches: none` and the match button is disabled.
+- On a frame already saved in the repository, the duplicate row shows at least one exact match.
+- If the first match belongs to the current dump, `Open First Match` jumps to that saved frame and restores its descriptor and boxes.
+- If the first match belongs to another dump, `Open First Match` opens repository preview mode and shows the saved frame, descriptor, and boxes.
+- The duplicate notice updates as the frame changes, after submitting evidence, and after refreshing the repository browser.
+- Submitting evidence remains possible even when exact matches are present.
+
+**Failure examples:**
+
+- The duplicate row reports matches for visually different frames.
+- The duplicate row misses a byte-identical frame saved under another filename, header, or source index.
+- `Open First Match` opens the wrong evidence record.
+- Duplicate awareness prevents intentional submission.
+- Duplicate information becomes stale after saving or refreshing.
+
+**Next subprocess stage:**
+
+Stage 9 should add export/reporting for collected evidence if needed after Stage 8 is validated.
+
+---
+
+### Stage 9 export/reporting record - 2026-09-23
+
+**Status:** LOCKED
+
+**What was implemented:**
+
+- Service-level JSON export for the full evidence repository.
+- Deterministic export payload containing repository counts, dump metadata, evidence frame hashes, descriptors, stored frame pixels, and all region boxes.
+- `Export Report` button in the repository browser controls.
+- User-facing export success/failure status messages.
+- README documentation for exported report contents.
+- Unit coverage proving the exported JSON contains machine-readable evidence.
+
+**Files added or changed:**
+
+- `Drawing Evidence Process/src/dmd_evidence/services/evidence_service.py`
+- `Drawing Evidence Process/src/dmd_evidence/ui/main_window.py`
+- `Drawing Evidence Process/tests/test_evidence_service.py`
+- `Drawing Evidence Process/README.md`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- From `Drawing Evidence Process`: `python -m unittest discover -s tests`
+- Launcher import smoke check: `python -c "import run; print('launcher import ok')"`
+- Result: passed, 37 tests.
+- Launcher import smoke check passed.
+- Human validation: confirmed by user on 2026-09-23 as "Stage 9 is complete."
+
+**Successful human validation looks like:**
+
+- `Export Report` opens a save dialog from the evidence collector.
+- Saving to a `.json` path creates a readable JSON file.
+- The status line reports the exported dump, evidence-frame, and box counts.
+- The JSON includes every saved dump currently shown by repository totals.
+- Each exported evidence frame includes descriptor text, frame hash, source frame index, stored frame data, and region boxes.
+- Exporting does not change the current frame, selected evidence, annotations, or repository contents.
+
+**Failure examples:**
+
+- The export button creates an empty or invalid JSON file.
+- Export counts do not match the repository status line.
+- Region boxes, descriptors, or frame hashes are missing from exported evidence.
+- Exporting changes existing evidence or current UI selection.
+- Export failure silently appears successful.
+
+**Subprocess completion note:**
+
+No further Drawing Evidence Process stages are needed for the current scope. The subprocess now supports human evidence collection, editing, duplicate awareness, and export. Next work should return to the main process as evidence-based region detector evaluation.
 
 ---
 
@@ -3063,7 +3499,60 @@ Its completed initial viewer includes:
 - frame count, frame index, and header display;
 - previous/next stepping.
 
-The next approved subprocess step is Stage 3 timeline navigation: full-dump slider scrubbing, exact frame navigation, +/- 1 and +/- 10 stepping, and optional playback.
+Its locked timeline navigation includes:
+
+- full-dump slider scrubbing;
+- exact one-based frame navigation;
+- +/- 1 and +/- 10 stepping;
+- arrow-key and Shift+arrow stepping;
+- forward playback.
+
+Its locked rectangle annotation includes:
+
+- click-drag box creation;
+- select, move, resize, delete, and clear controls;
+- per-frame in-memory draft boxes;
+- scale-correct native-coordinate geometry.
+
+Its locked evidence submission and repository evidence browser includes:
+
+- `Submit Evidence` for the current frame and rectangles;
+- immediate SQLite persistence;
+- evidence-frame count updates;
+- repository-wide total counts for dumps, evidence frames, and boxes;
+- green timeline markers for saved frames;
+- clickable marker navigation to saved frames;
+- visible `Saved Frames For Current Dump` list;
+- visible `All Repository Evidence` list across all dumps;
+- saved-frame row navigation;
+- repository evidence selection that jumps current-dump evidence or previews stored SQLite frames from other dumps;
+- repository preview editing with resubmit/update of the selected evidence record;
+- saved box reload when revisiting a submitted frame;
+- resizable/fullscreen drawing surface with native-coordinate preservation;
+- persistence across app restart for the same dump content hash.
+
+Its locked reopen/edit hardening includes:
+
+- known-dump detection by content hash;
+- status text for known/new dump loads, saves, preview updates, and failures;
+- restart tests for saved-frame indices and saved boxes;
+- restart tests for repository-preview edit persistence;
+- repository-preview repaint support after resize.
+
+Its locked evidence browser improvements include:
+
+- dump filter dropdown for `All Repository Evidence`;
+- descriptor field saved with evidence frames and shown in repository rows;
+- text search across visible repository evidence row details, including descriptors;
+- browser refresh control;
+- repository dump-list query and service method;
+- testable browser filtering helper.
+
+Stage 8 duplicate awareness is locked. It adds exact frame-hash matching, a current-frame duplicate notice, and an `Open First Match` control that jumps to current-dump evidence or previews matching evidence from another dump without blocking intentional submissions.
+
+Stage 9 export/reporting is locked. It adds a JSON repository export with counts, dump metadata, evidence frame hashes, descriptors, stored frame pixels, and human-drawn region boxes.
+
+The Drawing Evidence Process is complete for the current scope. Do not add more subprocess stages unless a new evidence-collection need is identified. The next logical main-project step is evidence-based region detector evaluation: run detector output against exported human evidence and report alignment failures.
 
 Stage 4C revision validation is still pending and must not be relocked until the user explicitly validates it.
 

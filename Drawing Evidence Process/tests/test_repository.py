@@ -38,6 +38,7 @@ class RepositoryTests(unittest.TestCase):
                 dump_record.id,
                 dump.get_frame(0),
                 [NativeRect(1, 0, 2, 1), NativeRect(0, 1, 4, 1)],
+                descriptor="score scene",
             )
             repo.close()
 
@@ -46,6 +47,7 @@ class RepositoryTests(unittest.TestCase):
             regions = reopened.list_regions(evidence.id)
 
             self.assertEqual(reopened.counts()["evidence_frames"], 1)
+            self.assertEqual(reopened.get_evidence_frame(dump_record.id, 0).descriptor, "score scene")
             self.assertEqual(len(regions), 2)
             self.assertEqual(regions[0].x, 1)
             reopened.close()
@@ -82,6 +84,71 @@ class RepositoryTests(unittest.TestCase):
             self.assertEqual(first_record.id, second_record.id)
             self.assertEqual(second_record.filename, "b.txt")
             self.assertEqual(repo.counts()["dumps"], 1)
+            repo.close()
+
+    def test_list_evidence_summaries_spans_dumps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = EvidenceRepository(Path(tmp) / "evidence.sqlite")
+            repo.initialize()
+            first = DmdDump(filename="a.txt", content_hash="a", frames=(_test_frame(0),))
+            second = DmdDump(filename="b.txt", content_hash="b", frames=(_test_frame(5),))
+            first_record = repo.upsert_dump(first)
+            second_record = repo.upsert_dump(second)
+            repo.submit_evidence(first_record.id, first.get_frame(0), [NativeRect(0, 0, 1, 1)])
+            repo.submit_evidence(
+                second_record.id,
+                second.get_frame(0),
+                [NativeRect(0, 0, 1, 1), NativeRect(1, 0, 1, 1)],
+                descriptor="bonus count",
+            )
+
+            summaries = repo.list_evidence_summaries()
+
+            self.assertEqual(len(summaries), 2)
+            self.assertEqual(summaries[0].filename, "a.txt")
+            self.assertEqual(summaries[0].source_frame_index, 0)
+            self.assertEqual(summaries[0].region_count, 1)
+            self.assertEqual(summaries[1].filename, "b.txt")
+            self.assertEqual(summaries[1].source_frame_index, 5)
+            self.assertEqual(summaries[1].descriptor, "bonus count")
+            self.assertEqual(summaries[1].region_count, 2)
+            repo.close()
+
+    def test_list_dumps_returns_dumps_by_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = EvidenceRepository(Path(tmp) / "evidence.sqlite")
+            repo.initialize()
+            repo.upsert_dump(DmdDump(filename="b.txt", content_hash="b", frames=(_test_frame(),)))
+            repo.upsert_dump(DmdDump(filename="a.txt", content_hash="a", frames=(_test_frame(),)))
+
+            dumps = repo.list_dumps()
+
+            self.assertEqual([dump.filename for dump in dumps], ["a.txt", "b.txt"])
+            repo.close()
+
+    def test_update_evidence_regions_by_id_replaces_regions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = EvidenceRepository(Path(tmp) / "evidence.sqlite")
+            repo.initialize()
+            dump = DmdDump(filename="a.txt", content_hash="a", frames=(_test_frame(0),))
+            dump_record = repo.upsert_dump(dump)
+            evidence = repo.submit_evidence(
+                dump_record.id,
+                dump.get_frame(0),
+                [NativeRect(0, 0, 1, 1)],
+            )
+
+            repo.update_evidence_regions(
+                evidence.id,
+                [NativeRect(1, 0, 2, 1), NativeRect(0, 1, 3, 1)],
+                descriptor="updated descriptor",
+            )
+            regions = repo.list_regions(evidence.id)
+
+            self.assertEqual(len(regions), 2)
+            self.assertEqual(repo.get_evidence_frame_by_id(evidence.id).descriptor, "updated descriptor")
+            self.assertEqual(regions[0].x, 1)
+            self.assertEqual(regions[1].width, 3)
             repo.close()
 
 
