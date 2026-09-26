@@ -1282,6 +1282,8 @@ Stage 9 should add export/reporting for collected evidence if needed after Stage
 - The status line reports the exported dump, evidence-frame, and box counts.
 - The JSON includes every saved dump currently shown by repository totals.
 - Each exported evidence frame includes descriptor text, frame hash, source frame index, stored frame data, and region boxes.
+- Nested or overlapping human regions are valid evidence. A larger container/border region may intentionally contain smaller text/content regions.
+- Human-drawn boxes are spatial/logical comparison regions, not pixel-perfect masks. A box may contain variable score digits, animation states, background pixels, unused pixels, or noise that should not be treated as literal evidence membership.
 - Exporting does not change the current frame, selected evidence, annotations, or repository contents.
 
 **Failure examples:**
@@ -1295,6 +1297,110 @@ Stage 9 should add export/reporting for collected evidence if needed after Stage
 **Subprocess completion note:**
 
 No further Drawing Evidence Process stages are needed for the current scope. The subprocess now supports human evidence collection, editing, duplicate awareness, and export. Next work should return to the main process as evidence-based region detector evaluation.
+
+Human evidence is not required to be a flat, non-overlapping partition of the frame. A frame may correctly contain a large region for a bordered/container panel and smaller regions inside it for internal content. Future evaluation must be containment-aware and must not treat nested boxes as contradictory merely because they overlap.
+
+Human evidence boxes define intended spatial/logical comparison areas, not exact pixel masks. The evaluator must not require exact pixel membership or exact pixel values inside a box. This matters for score regions where digits can change, irregular animated objects where a bounding box contains background, and any region whose internal pixels vary while the human-meaningful region boundary remains stable.
+
+---
+
+### Evidence-guided region detector evaluation record - 2026-09-25
+
+**Status:** IMPLEMENTED / VALIDATING
+
+**Purpose:**
+
+Use exported human region evidence to evaluate and improve region detection logic by aggregate scoring, not by manually validating one failure at a time.
+
+**What was implemented:**
+
+- Added `src/evidence` evaluation package.
+- Added export loader for `dmd-region-evidence-export` JSON.
+- Added detector pipeline adapter that runs current refined region detection against each evidence frame.
+- Added containment-aware box matching.
+- Added aggregate evaluation report with:
+  - frame count;
+  - human region count;
+  - detected region count;
+  - matched/missed/extra region counts;
+  - mean alignment score;
+  - mean match score;
+  - worst-frame summaries.
+- Added option sweep helper for evidence-guided detector tuning.
+- Added missed-region failure pattern analysis.
+- Added automated tests for evidence export evaluation and option ranking.
+- Wrote current report to `reports/evidence_region_evaluation_summary.json`.
+- Wrote current failure pattern report to `reports/evidence_failure_patterns.json`.
+
+**Evidence semantics used by the evaluator:**
+
+- Human boxes are spatial/logical comparison regions, not pixel-perfect masks.
+- Human boxes may overlap or nest.
+- Matching is one-to-one for aggregate scoring, but uses both IoU and containment coverage so near-contained boxes can match without requiring exact pixel membership.
+- The evaluator reports failures in aggregate; it does not require the operator to manually review every mismatch.
+
+**First measured baseline against `Drawing Evidence Process/Exports_Test.json`:**
+
+- Evidence frames: 72.
+- Human regions: 302.
+- Previous detector defaults:
+  - mean alignment score: 0.355.
+  - matched regions: 91.
+  - missed regions: 211.
+  - extra regions: 160.
+- Evidence-guided safe default change:
+  - `min_negative_space_ratio` changed from `0.25` to `0.20`.
+  - Candidate grouping default remained at threshold `3` because threshold `2` improved the evidence score slightly but broke locked Stage 4 behavior.
+- Evidence-guided contextual merge change:
+  - `Insert Coin.txt`, frame index `10`, is now interpreted as two human-logical regions: the left animation/art object and the right `INSERT COINS` contextual text block.
+  - The earlier three-refined-region expectation for this frame is superseded by human evidence semantics: stacked rows can belong to one contextual region even when a low-occupancy horizontal corridor exists between them.
+  - A conservative post-refinement merge combines two wide, strongly x-overlapping stacked row bands when they remain compact enough to avoid broad unrelated merges.
+- Evidence-guided over-grouping change:
+  - broad kept first-pass regions can now retain the parent region while also exposing supplemental vertical child regions when Stage 4B already found strong vertical split evidence.
+  - This preserves valid nested/container evidence while giving the evaluator and later detector stages child proposals inside broad regions.
+- Current measured result:
+  - mean alignment score: 0.433.
+  - matched regions: 111.
+  - missed regions: 191.
+  - extra regions: 148.
+
+**Failure pattern analysis against current evidence:**
+
+- `missing child region inside broad container`: 128 missed regions.
+- `under-grouped pieces inside human region`: 22 missed regions.
+- `partial-overlap geometry mismatch`: 20 missed regions.
+- `irregular object or container ROI mismatch`: 8 missed regions.
+- `over-grouped detector region contains human region`: 6 missed regions.
+- `missing isolated human region`: 4 missed regions.
+- `internal-gap text/row grouping mismatch`: 2 missed regions.
+- `missing broad container/logical region`: 1 missed region.
+
+**Interpretation of failure patterns:**
+
+The original over-grouping bucket is now clarified into two separate cases. True close-scale over-grouping is down to 6 missed regions. The dominant remaining issue is `missing child region inside broad container`, where the detector has a broad parent/container region but lacks human-comparable child proposals inside it. Supplemental vertical child regions reduced the original over-grouping bucket and improved aggregate alignment from 0.410 to 0.433, but the next detector logic work should target child-region proposal generation inside broad containers, with particular attention to negative-space/text-band cases where the current split choice creates broad dark bands instead of human-comparable content regions.
+
+**Files added or changed:**
+
+- `src/evidence/__init__.py`
+- `src/evidence/evaluation.py`
+- `src/spatial/regions.py`
+- `tests/test_evidence_evaluation.py`
+- `reports/evidence_region_evaluation_summary.json`
+- `reports/evidence_failure_patterns.json`
+- `DMD_MASK_OPTIMIZATION_SOURCE_OF_TRUTH.md`
+
+**Automated tests:**
+
+- `python -m unittest discover -s tests`
+- Result: passed, 64 tests.
+
+**Interpretation:**
+
+The evidence set is sufficient to guide detector optimization. Parameter tuning alone produced a measurable safe improvement, but many zero-match frames remain. The remaining failures indicate that the current Stage 4 geometry logic lacks a stronger concept of human logical grouping across internal gaps, containers, and irregular animation regions.
+
+**Next recommended work:**
+
+Continue evidence-guided optimization by addressing the highest-impact over-grouping bucket first. Add logic that can propose useful child regions inside broad detector regions while preserving valid nested/container evidence. Accept changes only when aggregate evidence scores improve without breaking locked regression tests.
 
 ---
 
@@ -3179,7 +3285,7 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 **Real-data validation targets:**
 
-- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: Stage 4C refines 2 first-pass regions into 3 refined regions by keeping the left animation/art region and splitting the right text block into two geometry-only bands.
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: original Stage 4C validation refined 2 first-pass regions into 3 refined regions by keeping the left animation/art region and splitting the right text block into two geometry-only bands. This expectation is now superseded by evidence-guided validation: the right `INSERT COINS` text block should be treated as one contextual region despite the internal row gap.
 - `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`: Stage 4C refines 1 first-pass region into 2 negative-space refined regions.
 
 **Visual validation:**
@@ -3188,7 +3294,7 @@ No stage should be marked `LOCKED` without an explicit completion record.
 - Use `Regions -> Refined` to inspect refined region boxes.
 - Use the Refined Regions panel to select one refined proposal at a time.
 - Compare with `Regions -> Boxes` and `Regions -> Splits` when a refined result needs explanation.
-- User confirmed refined regions look correct on both target examples: `Insert Coin.txt`, frame index `10`, and `mixed_01.txt`, frame index `500`.
+- User originally confirmed refined regions looked correct on both target examples: `Insert Coin.txt`, frame index `10`, and `mixed_01.txt`, frame index `500`. Later evidence-guided review superseded the Insert Coin interpretation so the right text block is one contextual region.
 
 **Successful human validation looks like:**
 
@@ -3264,7 +3370,7 @@ No stage should be marked `LOCKED` without an explicit completion record.
 
 - `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`: the left object should remain one large kept first-pass refined region, not multiple horizontal slices.
 - `mixed_01.txt`, frame index `900` / viewer frame `901`, header `0x000a923c`: the upper score-like area should remain a broad refined region, while lower row-like content should promote useful vertical refined regions.
-- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: should still refine the right text block into two horizontal bands while keeping the left animation/art region.
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`: should keep the left animation/art region and merge the right stacked `INSERT COINS` rows into one contextual text-block region.
 - `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`: should still identify two negative-space refined regions.
 
 **Successful human validation looks like:**
@@ -3478,9 +3584,9 @@ is just as valuable as discovering an optimized mask.
 
 # 19. Current Approved Task
 
-**Current stage:** Drawing Evidence Process — standalone human evidence collector
+**Current stage:** Evidence-guided region detector evaluation
 
-Main Stage 4 detector development is paused. Stage 4C remains reopened/validating, but active implementation has shifted to the standalone `Drawing Evidence Process` so human-verified evidence can be collected before further detector tuning.
+The standalone `Drawing Evidence Process` is complete for the current scope. Main detector work has resumed through aggregate evidence-guided evaluation rather than one-off screenshot validation.
 
 The Drawing Evidence Process must remain separate from the main region detector. Its completed foundation includes:
 
@@ -3554,6 +3660,19 @@ Stage 9 export/reporting is locked. It adds a JSON repository export with counts
 
 The Drawing Evidence Process is complete for the current scope. Do not add more subprocess stages unless a new evidence-collection need is identified. The next logical main-project step is evidence-based region detector evaluation: run detector output against exported human evidence and report alignment failures.
 
+Human evidence boxes may overlap or nest. A bordered/container region and its internal content regions can all be valid regions in the same frame. The future evaluator must support containment-aware matching rather than assuming every human region is mutually exclusive.
+
+Human evidence boxes are not pixel-perfect masks. They define spatial/logical comparison areas whose contents may change. Score digits, animation frames, background pixels inside irregular-object boxes, and unused interior pixels must not be treated as evidence errors solely because they differ from the exported frame's pixels.
+
+Evidence-guided detector evaluation is implemented and validating:
+
+- `src/evidence` loads exported human evidence and runs the current refined-region detector against each evidence frame;
+- matching is containment-aware and does not assume human boxes are pixel masks;
+- aggregate reports include matched, missed, and extra region counts plus worst-frame summaries;
+- current report is written to `reports/evidence_region_evaluation_summary.json`;
+- first measured safe detector improvement changed `min_negative_space_ratio` from `0.25` to `0.20`;
+- evidence alignment improved from `0.355` to `0.410` while `python -m unittest discover -s tests` passes 64 tests.
+
 Stage 4C revision validation is still pending and must not be relocked until the user explicitly validates it.
 
 Stage 4C revision validation must confirm:
@@ -3561,7 +3680,7 @@ Stage 4C revision validation must confirm:
 - `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`, keeps the left object as one large refined region instead of slicing it into horizontal bands;
 - `mixed_01.txt`, frame index `850` / viewer frame `851`, header `0x000a7b2a`, keeps the right-side stacked content horizontally separated;
 - `mixed_01.txt`, frame index `900` / viewer frame `901`, header `0x000a923c`, keeps the upper score-like area broad and promotes useful lower-row vertical refined boxes;
-- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`, still refines to 3 geometry-only regions;
+- `Insert Coin.txt`, frame index `10` / viewer frame `11`, header `0x48cfc511`, refines to 2 geometry-only contextual regions: left animation/art and right `INSERT COINS` text block;
 - `mixed_01.txt`, frame index `500` / viewer frame `501`, header `0x0009e320`, still refines to 2 negative-space geometry-only regions;
 - refined regions remain geometry-only and do not assign semantic labels.
 

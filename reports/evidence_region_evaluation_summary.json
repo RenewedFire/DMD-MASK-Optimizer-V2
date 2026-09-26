@@ -1,0 +1,139 @@
+{
+  "options": {
+    "max_candidate_threshold": 3,
+    "max_corridor_occupancy_ratio": 0.03,
+    "min_negative_space_ratio": 0.2,
+    "min_band_height": 2,
+    "min_band_width": 6
+  },
+  "frame_count": 72,
+  "human_region_count": 302,
+  "detected_region_count": 259,
+  "matched_region_count": 111,
+  "missed_region_count": 191,
+  "extra_region_count": 148,
+  "mean_alignment_score": 0.43293334751668083,
+  "mean_match_score": 0.8333361074847473,
+  "worst_frames": [
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 1047,
+      "descriptor": "X more for Multiball",
+      "human_count": 4,
+      "detected_count": 3,
+      "matched_count": 0,
+      "missed_count": 4,
+      "extra_count": 3,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 1119,
+      "descriptor": "Main Scoring with Truck Sprite",
+      "human_count": 4,
+      "detected_count": 5,
+      "matched_count": 0,
+      "missed_count": 4,
+      "extra_count": 5,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 1400,
+      "descriptor": "Super Pops (Background)",
+      "human_count": 2,
+      "detected_count": 1,
+      "matched_count": 0,
+      "missed_count": 2,
+      "extra_count": 1,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 2138,
+      "descriptor": "Multiball ready",
+      "human_count": 4,
+      "detected_count": 1,
+      "matched_count": 0,
+      "missed_count": 4,
+      "extra_count": 1,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 2720,
+      "descriptor": "Twister Multiball",
+      "human_count": 9,
+      "detected_count": 1,
+      "matched_count": 0,
+      "missed_count": 9,
+      "extra_count": 1,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 3981,
+      "descriptor": "Truck Multiball Animation_1",
+      "human_count": 2,
+      "detected_count": 6,
+      "matched_count": 0,
+      "missed_count": 2,
+      "extra_count": 6,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 4040,
+      "descriptor": "Truck Multiball Animation_4",
+      "human_count": 2,
+      "detected_count": 2,
+      "matched_count": 0,
+      "missed_count": 2,
+      "extra_count": 2,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 5542,
+      "descriptor": "Chase Jackpot Shoot Ramp",
+      "human_count": 5,
+      "detected_count": 1,
+      "matched_count": 0,
+      "missed_count": 5,
+      "extra_count": 1,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 14240,
+      "descriptor": "Match Animation_1",
+      "human_count": 7,
+      "detected_count": 2,
+      "matched_count": 0,
+      "missed_count": 7,
+      "extra_count": 2,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    },
+    {
+      "filename": "Large 1 Player.txt",
+      "source_frame_index": 14261,
+      "descriptor": "Match Animation_2",
+      "human_count": 6,
+      "detected_count": 4,
+      "matched_count": 0,
+      "missed_count": 6,
+      "extra_count": 4,
+      "alignment_score": 0.0,
+      "mean_match_score": 0.0
+    }
+  ]
+}

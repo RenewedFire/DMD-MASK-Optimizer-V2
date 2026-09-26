@@ -218,7 +218,7 @@ class SpatialRegionTests(unittest.TestCase):
         self.assertIsNone(payload[0]["source_split_id"])
         self.assertEqual(payload[0]["refinement_reason"], "kept first-pass region")
 
-    def test_insert_coin_frame_refines_text_rows_without_semantics(self) -> None:
+    def test_insert_coin_frame_merges_contextual_text_rows_without_semantics(self) -> None:
         dataset = get_config().datasets_dir / "Insert Coin.txt"
         if not dataset.exists():
             self.skipTest("Insert Coin.txt is not available")
@@ -236,8 +236,13 @@ class SpatialRegionTests(unittest.TestCase):
         refined = refine_spatial_regions(regions, split_evidence)
 
         self.assertEqual(len(regions), 2)
-        self.assertEqual(len(refined), 3)
-        self.assertTrue(any(region.source_split_id is not None for region in refined))
+        self.assertEqual(len(refined), 2)
+        self.assertTrue(
+            any(
+                region.refinement_reason == "merged stacked contextual row bands"
+                for region in refined
+            )
+        )
 
     def test_negative_space_frame_refines_to_two_dark_bands(self) -> None:
         dataset = get_config().datasets_dir / "mixed_01.txt"

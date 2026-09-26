@@ -124,7 +124,7 @@ def find_region_split_evidence(
     *,
     binary_pixels: tuple[tuple[int, ...], ...] | None = None,
     max_corridor_occupancy_ratio: float = 0.03,
-    min_negative_space_ratio: float = 0.25,
+    min_negative_space_ratio: float = 0.20,
     min_band_height: int = 2,
     min_band_width: int = 6,
 ) -> tuple[RegionSplitEvidence, ...]:
@@ -249,6 +249,8 @@ def refine_spatial_regions(
         region_splits = splits_by_region.get(region.region_id, ())
         selected_split = _select_refinement_split(region, region_splits)
         if selected_split is None:
+            selected_split = _select_full_height_vertical_split(region, region_splits)
+        if selected_split is None:
             refined_regions.append(
                 RefinedSpatialRegion(
                     refined_region_id=len(refined_regions),
@@ -261,6 +263,20 @@ def refine_spatial_regions(
                     area=region.area,
                 )
             )
+            for supplemental_split in _select_supplemental_vertical_splits(region, region_splits):
+                for band in supplemental_split.bands:
+                    refined_regions.append(
+                        RefinedSpatialRegion(
+                            refined_region_id=len(refined_regions),
+                            source_region_id=region.region_id,
+                            source_split_id=supplemental_split.split_id,
+                            source_band_id=band.band_id,
+                            refinement_reason="supplemental vertical child region",
+                            component_ids=band.component_ids,
+                            bounding_box=band.bounding_box,
+                            area=band.area,
+                        )
+                    )
             continue
 
         for band in selected_split.bands:
@@ -294,7 +310,7 @@ def refine_spatial_regions(
                 )
             )
 
-    return tuple(refined_regions)
+    return _merge_contextual_stacked_regions(tuple(refined_regions))
 
 
 def regions_to_payload(regions: tuple[SpatialRegion, ...]) -> list[dict[str, object]]:
@@ -666,6 +682,83 @@ def _select_nested_vertical_split(
     return max(candidates, key=lambda split: (split.band_count, -split.split_id))
 
 
+def _select_supplemental_vertical_splits(
+    region: SpatialRegion,
+    split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
+) -> tuple[RegionSplitEvidence, ...]:
+    region_box = region.bounding_box
+    if region_box.width < 90 or region_box.height < 24:
+        return ()
+    if region.occupancy_ratio < 0.25:
+        return ()
+    candidates = [
+        split
+        for split in split_evidence
+        if split.axis == "vertical"
+        and 2 <= split.band_count <= 4
+        and split.reason in {
+            "internal low-occupancy column corridor",
+            "vertical corridor inside negative-space band",
+        }
+        and _contains_box(region_box, _union_band_box(split.bands))
+    ]
+    if not candidates:
+        return ()
+    selected = max(
+        candidates,
+        key=lambda split: (
+            sum(band.bounding_box.width * band.bounding_box.height for band in split.bands),
+            -split.split_id,
+        ),
+    )
+    return (selected,)
+
+
+def _select_full_height_vertical_split(
+    region: SpatialRegion,
+    split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
+) -> RegionSplitEvidence | None:
+    region_box = region.bounding_box
+    if region_box.width < 90 or region_box.height < 24:
+        return None
+    if region.occupancy_ratio < 0.25:
+        return None
+
+    candidates = [
+        split
+        for split in split_evidence
+        if split.axis == "vertical"
+        and 5 <= split.band_count <= 9
+        and split.reason == "internal low-occupancy column corridor"
+        and _contains_box(region_box, _union_band_box(split.bands))
+        and _looks_like_full_height_columns(region_box, split)
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda split: (split.band_count, -split.split_id))
+
+
+def _looks_like_full_height_columns(region_box: BoundingBox, split: RegionSplitEvidence) -> bool:
+    full_height_bands = [
+        band
+        for band in split.bands
+        if band.bounding_box.height / region_box.height >= 0.78
+    ]
+    if len(full_height_bands) < max(5, split.band_count - 1):
+        return False
+
+    covered_width = sum(band.bounding_box.width for band in split.bands)
+    if covered_width / region_box.width < 0.70:
+        return False
+
+    narrow_bands = [
+        band
+        for band in split.bands
+        if band.bounding_box.width / region_box.width <= 0.33
+    ]
+    return len(narrow_bands) >= max(5, split.band_count - 1)
+
+
 def _looks_like_object_slices(region_box: BoundingBox, split: RegionSplitEvidence) -> bool:
     if split.band_count < 3:
         return False
@@ -689,6 +782,94 @@ def _looks_like_object_slices(region_box: BoundingBox, split: RegionSplitEvidenc
         if overlap / min(first.bounding_box.width, second.bounding_box.width) >= 0.70:
             overlap_pairs += 1
     return overlap_pairs >= len(broad_bands) - 1
+
+
+def _merge_contextual_stacked_regions(
+    refined_regions: tuple[RefinedSpatialRegion, ...],
+) -> tuple[RefinedSpatialRegion, ...]:
+    merged_regions: list[RefinedSpatialRegion] = []
+    consumed: set[int] = set()
+
+    for index, region in enumerate(refined_regions):
+        if index in consumed:
+            continue
+        sibling_indexes = [
+            sibling_index
+            for sibling_index, sibling in enumerate(refined_regions)
+            if sibling_index not in consumed
+            and sibling.source_region_id == region.source_region_id
+            and sibling.source_split_id == region.source_split_id
+            and sibling.refinement_reason == region.refinement_reason
+        ]
+        siblings = tuple(refined_regions[sibling_index] for sibling_index in sibling_indexes)
+        if _should_merge_contextual_stack(siblings):
+            consumed.update(sibling_indexes)
+            merged_regions.append(
+                RefinedSpatialRegion(
+                    refined_region_id=len(merged_regions),
+                    source_region_id=region.source_region_id,
+                    source_split_id=region.source_split_id,
+                    source_band_id=None,
+                    refinement_reason="merged stacked contextual row bands",
+                    component_ids=tuple(
+                        sorted({component_id for sibling in siblings for component_id in sibling.component_ids})
+                    ),
+                    bounding_box=_union_boxes(tuple(sibling.bounding_box for sibling in siblings)),
+                    area=sum(sibling.area for sibling in siblings),
+                )
+            )
+            continue
+
+        consumed.add(index)
+        merged_regions.append(
+            RefinedSpatialRegion(
+                refined_region_id=len(merged_regions),
+                source_region_id=region.source_region_id,
+                source_split_id=region.source_split_id,
+                source_band_id=region.source_band_id,
+                refinement_reason=region.refinement_reason,
+                component_ids=region.component_ids,
+                bounding_box=region.bounding_box,
+                area=region.area,
+            )
+        )
+
+    return tuple(merged_regions)
+
+
+def _should_merge_contextual_stack(regions: tuple[RefinedSpatialRegion, ...]) -> bool:
+    if len(regions) != 2:
+        return False
+    if regions[0].refinement_reason != "internal low-occupancy row corridor":
+        return False
+    first, second = sorted(regions, key=lambda item: item.bounding_box.min_y)
+    first_box = first.bounding_box
+    second_box = second.bounding_box
+    vertical_gap = second_box.min_y - first_box.max_y - 1
+    if vertical_gap < 1 or vertical_gap > 4:
+        return False
+    union_box = _union_boxes((first_box, second_box))
+    if union_box.width < 32 or union_box.width > 55 or union_box.height > 28:
+        return False
+    width_ratio = min(first_box.width, second_box.width) / max(first_box.width, second_box.width)
+    if width_ratio < 0.70:
+        return False
+    x_overlap = _axis_overlap(
+        first_box.min_x,
+        first_box.max_x,
+        second_box.min_x,
+        second_box.max_x,
+    )
+    return x_overlap / min(first_box.width, second_box.width) >= 0.85
+
+
+def _union_boxes(boxes: tuple[BoundingBox, ...]) -> BoundingBox:
+    return BoundingBox(
+        min_x=min(box.min_x for box in boxes),
+        min_y=min(box.min_y for box in boxes),
+        max_x=max(box.max_x for box in boxes),
+        max_y=max(box.max_y for box in boxes),
+    )
 
 
 def _contains_box(container: BoundingBox, contained: BoundingBox) -> bool:
