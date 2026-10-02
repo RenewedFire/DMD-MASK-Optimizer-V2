@@ -144,6 +144,140 @@ def evaluate_evidence_export(
     return _build_report(options, frame_results)
 
 
+def evaluate_evidence_export_with_layout_prior(
+    export_path: str | Path,
+    options: DetectorOptions = DetectorOptions(),
+) -> EvaluationReport:
+    from src.evidence.learning import LayoutPriorOptions, train_layout_prior_model
+
+    return evaluate_evidence_export_with_layout_prior_options(
+        export_path,
+        detector_options=options,
+        layout_options=LayoutPriorOptions(),
+    )
+
+
+def evaluate_evidence_export_with_layout_prior_options(
+    export_path: str | Path,
+    *,
+    detector_options: DetectorOptions = DetectorOptions(),
+    layout_options: object,
+) -> EvaluationReport:
+    from src.evidence.learning import train_layout_prior_model
+
+    payload = json.loads(Path(export_path).read_text(encoding="utf-8"))
+    frame_results: list[EvaluationFrameResult] = []
+
+    for dump in payload["dumps"]:
+        for evidence_frame in dump["evidence_frames"]:
+            layout_model = train_layout_prior_model(
+                payload,
+                options=layout_options,
+                exclude_frame_ids=(evidence_frame["id"],),
+                dump_filename=dump["filename"],
+            )
+            human_boxes = tuple(_human_box(region) for region in evidence_frame["regions"])
+            binary_pixels = _binary_pixels(evidence_frame["frame"]["pixels"])
+            detected_boxes = detect_refined_region_boxes(
+                binary_pixels,
+                detector_options,
+                dump_filename=dump["filename"],
+                layout_model=layout_model,
+            )
+            frame_results.append(
+                _evaluate_frame(
+                    filename=dump["filename"],
+                    source_frame_index=evidence_frame["source_frame_index"],
+                    descriptor=evidence_frame["descriptor"],
+                    human_boxes=human_boxes,
+                    detected_boxes=detected_boxes,
+                )
+            )
+
+    return _build_report(detector_options, frame_results)
+
+
+def optimize_layout_prior_options(
+    export_path: str | Path,
+    option_grid: Iterable[object],
+    detector_options: DetectorOptions = DetectorOptions(),
+) -> tuple[EvaluationReport, ...]:
+    from src.evidence.learning import LayoutPriorModel, train_layout_prior_model
+
+    payload = json.loads(Path(export_path).read_text(encoding="utf-8"))
+    contexts = []
+    for dump in payload["dumps"]:
+        for evidence_frame in dump["evidence_frames"]:
+            binary_pixels = _binary_pixels(evidence_frame["frame"]["pixels"])
+            contexts.append(
+                {
+                    "dump_filename": dump["filename"],
+                    "evidence_frame_id": evidence_frame["id"],
+                    "filename": dump["filename"],
+                    "source_frame_index": evidence_frame["source_frame_index"],
+                    "descriptor": evidence_frame["descriptor"],
+                    "human_boxes": tuple(_human_box(region) for region in evidence_frame["regions"]),
+                    "binary_pixels": binary_pixels,
+                    "base_boxes": detect_refined_region_boxes(
+                        binary_pixels,
+                        detector_options,
+                    ),
+                }
+            )
+
+    model_cache: dict[tuple[object, ...], LayoutPriorModel] = {}
+    reports: list[EvaluationReport] = []
+    for layout_options in option_grid:
+        frame_results: list[EvaluationFrameResult] = []
+        for context in contexts:
+            model_key = (
+                context["dump_filename"],
+                context["evidence_frame_id"],
+                layout_options.cluster_threshold,
+                layout_options.min_support_count,
+                layout_options.min_occupancy_ratio,
+            )
+            if model_key not in model_cache:
+                model_cache[model_key] = train_layout_prior_model(
+                    payload,
+                    options=layout_options,
+                    exclude_frame_ids=(context["evidence_frame_id"],),
+                    dump_filename=context["dump_filename"],
+                )
+            base_model = model_cache[model_key]
+            layout_model = LayoutPriorModel(
+                templates=base_model.templates,
+                options=layout_options,
+            )
+            learned_boxes = layout_model.predict_boxes(
+                context["dump_filename"],
+                context["binary_pixels"],
+            )
+            detected_boxes = tuple(dict.fromkeys((*context["base_boxes"], *learned_boxes)))
+            frame_results.append(
+                _evaluate_frame(
+                    filename=context["filename"],
+                    source_frame_index=context["source_frame_index"],
+                    descriptor=context["descriptor"],
+                    human_boxes=context["human_boxes"],
+                    detected_boxes=detected_boxes,
+                )
+            )
+        reports.append(_build_report(detector_options, frame_results))
+
+    return tuple(
+        sorted(
+            reports,
+            key=lambda report: (
+                report.mean_alignment_score,
+                report.matched_region_count,
+                -report.extra_region_count,
+            ),
+            reverse=True,
+        )
+    )
+
+
 def analyze_failure_patterns(
     export_path: str | Path,
     options: DetectorOptions = DetectorOptions(),
@@ -211,6 +345,9 @@ def optimize_detector_options(
 def detect_refined_region_boxes(
     binary_pixels: PixelMatrix,
     options: DetectorOptions = DetectorOptions(),
+    *,
+    dump_filename: str | None = None,
+    layout_model: object | None = None,
 ) -> tuple[BoundingBox, ...]:
     components = find_lit_components(binary_pixels)
     relationships = find_component_relationships(components)
@@ -230,7 +367,10 @@ def detect_refined_region_boxes(
         min_band_width=options.min_band_width,
     )
     refined_regions = refine_spatial_regions(regions, split_evidence)
-    return tuple(region.bounding_box for region in refined_regions)
+    boxes = [region.bounding_box for region in refined_regions]
+    if dump_filename is not None and layout_model is not None:
+        boxes.extend(layout_model.predict_boxes(dump_filename, binary_pixels))
+    return tuple(dict.fromkeys(boxes))
 
 
 def _evaluate_frame(

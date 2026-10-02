@@ -159,6 +159,15 @@ def find_region_split_evidence(
                             crossing_component_ids=vertical_crossing_ids,
                         )
                     )
+                    _append_horizontal_splits_inside_vertical_bands(
+                        split_evidence,
+                        region.region_id,
+                        region_components,
+                        vertical_bands,
+                        max_corridor_occupancy_ratio=max_corridor_occupancy_ratio,
+                        min_band_height=min_band_height,
+                        min_band_width=min_band_width,
+                    )
             else:
                 split_evidence.append(
                     RegionSplitEvidence(
@@ -213,6 +222,24 @@ def find_region_split_evidence(
                 )
             )
             for band in negative_bands:
+                horizontal_bands, corridor_rows, horizontal_crossing_ids = _horizontal_split_bands(
+                    region_components,
+                    band.bounding_box,
+                    max_corridor_occupancy_ratio=max_corridor_occupancy_ratio,
+                    min_band_height=min_band_height,
+                )
+                if len(horizontal_bands) >= 2:
+                    split_evidence.append(
+                        RegionSplitEvidence(
+                            split_id=len(split_evidence),
+                            region_id=region.region_id,
+                            axis="horizontal",
+                            reason="horizontal corridor inside negative-space band",
+                            corridor_rows=corridor_rows,
+                            bands=horizontal_bands,
+                            crossing_component_ids=horizontal_crossing_ids,
+                        )
+                    )
                 vertical_bands, corridor_columns, vertical_crossing_ids = _vertical_split_bands(
                     region_components,
                     band.bounding_box,
@@ -263,8 +290,57 @@ def refine_spatial_regions(
                     area=region.area,
                 )
             )
+            for supplemental_split in _select_supplemental_horizontal_splits(region, region_splits):
+                for band in supplemental_split.bands:
+                    refined_regions.append(
+                        RefinedSpatialRegion(
+                            refined_region_id=len(refined_regions),
+                            source_region_id=region.region_id,
+                            source_split_id=supplemental_split.split_id,
+                            source_band_id=band.band_id,
+                            refinement_reason="supplemental horizontal child region",
+                            component_ids=band.component_ids,
+                            bounding_box=band.bounding_box,
+                            area=band.area,
+                        )
+                    )
             for supplemental_split in _select_supplemental_vertical_splits(region, region_splits):
                 for band in supplemental_split.bands:
+                    nested_horizontal_split = _select_nested_horizontal_split(band, region_splits)
+                    if nested_horizontal_split is not None:
+                        for nested_band in nested_horizontal_split.bands:
+                            nested_vertical_bands = _select_merged_nested_vertical_bands(
+                                nested_band,
+                                region_splits,
+                            )
+                            if nested_vertical_bands:
+                                for nested_vertical_band in nested_vertical_bands:
+                                    refined_regions.append(
+                                        RefinedSpatialRegion(
+                                            refined_region_id=len(refined_regions),
+                                            source_region_id=region.region_id,
+                                            source_split_id=nested_horizontal_split.split_id,
+                                            source_band_id=nested_vertical_band.band_id,
+                                            refinement_reason="merged vertical corridor inside horizontal child",
+                                            component_ids=nested_vertical_band.component_ids,
+                                            bounding_box=nested_vertical_band.bounding_box,
+                                            area=nested_vertical_band.area,
+                                        )
+                                    )
+                                continue
+                            refined_regions.append(
+                                RefinedSpatialRegion(
+                                    refined_region_id=len(refined_regions),
+                                    source_region_id=region.region_id,
+                                    source_split_id=nested_horizontal_split.split_id,
+                                    source_band_id=nested_band.band_id,
+                                    refinement_reason=nested_horizontal_split.reason,
+                                    component_ids=nested_band.component_ids,
+                                    bounding_box=nested_band.bounding_box,
+                                    area=nested_band.area,
+                                )
+                            )
+                        continue
                     refined_regions.append(
                         RefinedSpatialRegion(
                             refined_region_id=len(refined_regions),
@@ -279,6 +355,18 @@ def refine_spatial_regions(
                     )
             continue
 
+        refined_regions.append(
+            RefinedSpatialRegion(
+                refined_region_id=len(refined_regions),
+                source_region_id=region.region_id,
+                source_split_id=selected_split.split_id,
+                source_band_id=None,
+                refinement_reason="retained parent region",
+                component_ids=region.component_ids,
+                bounding_box=region.bounding_box,
+                area=region.area,
+            )
+        )
         for band in selected_split.bands:
             nested_vertical_split = _select_nested_vertical_split(band, region_splits)
             if nested_vertical_split is not None:
@@ -290,6 +378,22 @@ def refine_spatial_regions(
                             source_split_id=nested_vertical_split.split_id,
                             source_band_id=nested_band.band_id,
                             refinement_reason=nested_vertical_split.reason,
+                            component_ids=nested_band.component_ids,
+                            bounding_box=nested_band.bounding_box,
+                            area=nested_band.area,
+                        )
+                    )
+                continue
+            nested_horizontal_split = _select_nested_horizontal_split(band, region_splits)
+            if nested_horizontal_split is not None:
+                for nested_band in nested_horizontal_split.bands:
+                    refined_regions.append(
+                        RefinedSpatialRegion(
+                            refined_region_id=len(refined_regions),
+                            source_region_id=region.region_id,
+                            source_split_id=nested_horizontal_split.split_id,
+                            source_band_id=nested_band.band_id,
+                            refinement_reason=nested_horizontal_split.reason,
                             component_ids=nested_band.component_ids,
                             bounding_box=nested_band.bounding_box,
                             area=nested_band.area,
@@ -309,7 +413,6 @@ def refine_spatial_regions(
                     area=band.area,
                 )
             )
-
     return _merge_contextual_stacked_regions(tuple(refined_regions))
 
 
@@ -448,7 +551,10 @@ def _horizontal_split_bands(
     }
     for component in components:
         for x, y in component.pixels:
-            if region_box.min_y <= y <= region_box.max_y:
+            if (
+                region_box.min_x <= x <= region_box.max_x
+                and region_box.min_y <= y <= region_box.max_y
+            ):
                 pixels_by_y[y].append((x, y, component.component_id))
 
     corridor_limit = max(1, int(region_box.width * max_corridor_occupancy_ratio))
@@ -599,6 +705,60 @@ def _vertical_split_bands(
     return tuple(bands), corridor_columns, crossing_ids
 
 
+def _append_horizontal_splits_inside_vertical_bands(
+    split_evidence: list[RegionSplitEvidence],
+    region_id: int,
+    region_components: tuple[LitComponent, ...],
+    vertical_bands: tuple[RegionSplitBand, ...],
+    *,
+    max_corridor_occupancy_ratio: float,
+    min_band_height: int,
+    min_band_width: int,
+) -> None:
+    for band in vertical_bands:
+        if band.bounding_box.width < 16 or band.bounding_box.height < 20:
+            continue
+        horizontal_bands, corridor_rows, crossing_ids = _horizontal_split_bands(
+            region_components,
+            band.bounding_box,
+            max_corridor_occupancy_ratio=max_corridor_occupancy_ratio,
+            min_band_height=min_band_height,
+        )
+        if len(horizontal_bands) < 2:
+            continue
+        split_evidence.append(
+            RegionSplitEvidence(
+                split_id=len(split_evidence),
+                region_id=region_id,
+                axis="horizontal",
+                reason="horizontal corridor inside vertical band",
+                corridor_rows=corridor_rows,
+                bands=horizontal_bands,
+                crossing_component_ids=crossing_ids,
+            )
+        )
+        for horizontal_band in horizontal_bands:
+            vertical_bands, corridor_columns, vertical_crossing_ids = _vertical_split_bands(
+                region_components,
+                horizontal_band.bounding_box,
+                max_corridor_occupancy_ratio=max_corridor_occupancy_ratio,
+                min_band_width=min_band_width,
+            )
+            if len(vertical_bands) < 2:
+                continue
+            split_evidence.append(
+                RegionSplitEvidence(
+                    split_id=len(split_evidence),
+                    region_id=region_id,
+                    axis="vertical",
+                    reason="vertical corridor inside horizontal corridor band",
+                    corridor_rows=corridor_columns,
+                    bands=vertical_bands,
+                    crossing_component_ids=vertical_crossing_ids,
+                )
+            )
+
+
 def _negative_space_horizontal_bands(
     binary_pixels: tuple[tuple[int, ...], ...],
     region_box: BoundingBox,
@@ -682,6 +842,83 @@ def _select_nested_vertical_split(
     return max(candidates, key=lambda split: (split.band_count, -split.split_id))
 
 
+def _select_nested_horizontal_split(
+    band: RegionSplitBand,
+    split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
+) -> RegionSplitEvidence | None:
+    if band.bounding_box.width < 16 or band.bounding_box.height < 20:
+        return None
+
+    candidates = [
+        split
+        for split in split_evidence
+        if split.axis == "horizontal"
+        and split.reason == "horizontal corridor inside vertical band"
+        and split.band_count == 2
+        and _compatible_nested_horizontal_band(band.bounding_box, _union_band_box(split.bands))
+    ]
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda split: (split.band_count, -split.split_id))
+
+
+def _select_merged_nested_vertical_bands(
+    band: RegionSplitBand,
+    split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
+) -> tuple[RegionSplitBand, ...]:
+    candidates = [
+        split
+        for split in split_evidence
+        if split.axis == "vertical"
+        and split.reason == "vertical corridor inside horizontal corridor band"
+        and 2 <= split.band_count <= 8
+        and _compatible_nested_vertical_band(band.bounding_box, _union_band_box(split.bands))
+    ]
+    if not candidates:
+        return ()
+    selected = max(candidates, key=lambda split: (split.band_count, -split.split_id))
+    merged = _merge_vertical_bands_across_tiny_gaps(selected.bands)
+    if len(merged) >= len(selected.bands):
+        return ()
+    return merged
+
+
+def _merge_vertical_bands_across_tiny_gaps(
+    bands: tuple[RegionSplitBand, ...],
+) -> tuple[RegionSplitBand, ...]:
+    if len(bands) < 2:
+        return bands
+
+    merged_groups: list[list[RegionSplitBand]] = [[bands[0]]]
+    for band in bands[1:]:
+        previous = merged_groups[-1][-1]
+        horizontal_gap = band.bounding_box.min_x - previous.bounding_box.max_x - 1
+        if horizontal_gap <= 2:
+            merged_groups[-1].append(band)
+            continue
+        merged_groups.append([band])
+
+    merged_bands: list[RegionSplitBand] = []
+    for group in merged_groups:
+        group_box = _union_band_box(tuple(group))
+        merged_bands.append(
+            RegionSplitBand(
+                band_id=len(merged_bands),
+                component_ids=tuple(
+                    sorted({component_id for item in group for component_id in item.component_ids})
+                ),
+                bounding_box=group_box,
+                area=sum(item.area for item in group),
+                x_min=group_box.min_x,
+                x_max=group_box.max_x,
+                y_min=group_box.min_y,
+                y_max=group_box.max_y,
+            )
+        )
+    return tuple(merged_bands)
+
+
 def _select_supplemental_vertical_splits(
     region: SpatialRegion,
     split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
@@ -714,6 +951,36 @@ def _select_supplemental_vertical_splits(
     return (selected,)
 
 
+def _select_supplemental_horizontal_splits(
+    region: SpatialRegion,
+    split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
+) -> tuple[RegionSplitEvidence, ...]:
+    region_box = region.bounding_box
+    if region_box.width < 90 or region_box.height < 24:
+        return ()
+    if region.occupancy_ratio < 0.25:
+        return ()
+    candidates = [
+        split
+        for split in split_evidence
+        if split.axis == "horizontal"
+        and 2 <= split.band_count <= 3
+        and split.reason == "horizontal corridor inside negative-space band"
+        and _contains_box(region_box, _union_band_box(split.bands))
+        and all(band.bounding_box.width >= 32 for band in split.bands)
+    ]
+    if not candidates:
+        return ()
+    selected = max(
+        candidates,
+        key=lambda split: (
+            sum(band.bounding_box.width * band.bounding_box.height for band in split.bands),
+            -split.split_id,
+        ),
+    )
+    return (selected,)
+
+
 def _select_full_height_vertical_split(
     region: SpatialRegion,
     split_evidence: tuple[RegionSplitEvidence, ...] | list[RegionSplitEvidence],
@@ -729,7 +996,10 @@ def _select_full_height_vertical_split(
         for split in split_evidence
         if split.axis == "vertical"
         and 5 <= split.band_count <= 9
-        and split.reason == "internal low-occupancy column corridor"
+        and split.reason in {
+            "internal low-occupancy column corridor",
+            "vertical corridor inside negative-space band",
+        }
         and _contains_box(region_box, _union_band_box(split.bands))
         and _looks_like_full_height_columns(region_box, split)
     ]
@@ -894,6 +1164,22 @@ def _compatible_nested_vertical_band(parent_band: BoundingBox, vertical_band_box
             vertical_band_box.min_x,
             vertical_band_box.max_x,
         ) / min(parent_band.width, vertical_band_box.width) >= 0.80
+    )
+
+
+def _compatible_nested_horizontal_band(parent_band: BoundingBox, horizontal_band_box: BoundingBox) -> bool:
+    if _contains_box(parent_band, horizontal_band_box):
+        return True
+    return (
+        horizontal_band_box.min_x <= parent_band.min_x
+        and horizontal_band_box.max_x == parent_band.max_x
+        and horizontal_band_box.width <= parent_band.width + 5
+        and _axis_overlap(
+            parent_band.min_y,
+            parent_band.max_y,
+            horizontal_band_box.min_y,
+            horizontal_band_box.max_y,
+        ) / min(parent_band.height, horizontal_band_box.height) >= 0.80
     )
 
 

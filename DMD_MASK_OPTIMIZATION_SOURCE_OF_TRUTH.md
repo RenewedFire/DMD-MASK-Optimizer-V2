@@ -1328,6 +1328,8 @@ Use exported human region evidence to evaluate and improve region detection logi
   - worst-frame summaries.
 - Added option sweep helper for evidence-guided detector tuning.
 - Added missed-region failure pattern analysis.
+- Added leave-one-out layout-prior learning from human evidence. This is separate from the Stage 4 geometry detector and excludes the current frame while evaluating that frame, so improvement is not credited by directly replaying the same frame's submitted boxes.
+- Added layout-prior option optimization infrastructure that computes the geometry baseline once and reuses it while comparing learned-prior settings.
 - Added automated tests for evidence export evaluation and option ranking.
 - Wrote current report to `reports/evidence_region_evaluation_summary.json`.
 - Wrote current failure pattern report to `reports/evidence_failure_patterns.json`.
@@ -1358,31 +1360,67 @@ Use exported human region evidence to evaluate and improve region detection logi
 - Evidence-guided over-grouping change:
   - broad kept first-pass regions can now retain the parent region while also exposing supplemental vertical child regions when Stage 4B already found strong vertical split evidence.
   - This preserves valid nested/container evidence while giving the evaluator and later detector stages child proposals inside broad regions.
-- Current measured result:
-  - mean alignment score: 0.433.
-  - matched regions: 111.
-  - missed regions: 191.
-  - extra regions: 148.
+- Evidence-guided full-height vertical refinement change:
+  - broad regions with no useful horizontal split can now promote strong full-height vertical corridor evidence when it spans most of the parent region.
+  - This addresses frames where human evidence expects vertical logical regions inside one broad first-pass container, such as full-height score/label columns.
+- Current geometry-only measured result:
+  - mean alignment score: 0.470.
+  - matched regions: 140.
+  - missed regions: 162.
+  - extra regions: 187.
+- Current leave-one-out learned layout-prior result:
+  - mean alignment score: 0.476.
+  - matched regions: 144.
+  - missed regions: 158.
+  - extra regions: 200.
+  - This is a real aggregate improvement over geometry-only detection and a confidence improvement over the earlier learned-prior settings. Current defaults use support count `3`, minimum occupancy `0.45`, up to `2` learned templates per frame, and minimum learned-template precision `0.70`.
+- Learned-prior reliability instrumentation:
+  - learned templates now record activation count, matched activation count, and precision against their training frames.
+  - A `0.70` minimum precision gate is now the default because the latest cached option search improved aggregate alignment while keeping learned-prior matches above geometry-only output.
+  - Looser gates added too many extra regions; stricter or higher-support settings reduced recall.
+- Tuning infrastructure note:
+  - leave-one-out training is now scoped to the active dump, rather than all dumps, and preserves the same measured result.
+  - geometry detection is cached during layout-prior option optimization.
+  - broader option-grid searches still need shared leave-one-out model caching across layout-prior settings before exhaustive tuning is practical.
+- Child-region geometry fix:
+  - `_horizontal_split_bands` now correctly filters pixels by both X and Y bounds. Previously it only filtered by Y, which prevented horizontal child splits from being discovered inside vertical bands.
+  - Stage 4B now records horizontal corridor evidence inside vertical bands.
+  - Stage 4C can apply a two-band horizontal nested split to supplemental vertical child regions.
+  - Stage 4C can also apply a merged vertical split inside those nested horizontal children, merging letter-like vertical bands across tiny gaps while preserving larger word/region gaps.
+  - `Large 1 Player.txt`, frame index `1028`, descriptor `Ball 1 Locked`, improved from 2 matched evidence regions to 4 matched evidence regions because the left broad vertical child is now split into top/bottom children and the top child is further split into human-sized side-by-side regions.
+- Negative-space row refinement:
+  - Stage 4B now records horizontal corridor evidence inside negative-space bands.
+  - Stage 4C can emit those row bands as supplemental horizontal child regions inside broad regions.
+  - `Large 1 Player.txt`, frame index `3400`, descriptor `Weathervane Total`, now matches all 3 human evidence regions because the broad negative-space content area is split into top and lower row regions.
+- Full-height negative-space column refinement:
+  - Stage 4C full-height vertical selection can now consider `vertical corridor inside negative-space band` evidence as well as `internal low-occupancy column corridor` evidence.
+  - This allows a finer vertical split when the negative-space evidence exposes more human-sized columns than the internal low-occupancy split.
+  - `Large 1 Player.txt`, frame index `2720`, descriptor `Twister Multiball`, improved by selecting the finer negative-space column split.
+- Parent/child region retention:
+  - Stage 4C now retains the parent region when a first-pass region is refined into split children.
+  - This aligns with evidence semantics that nested/overlapping human regions are valid: a broad logical container and its child regions may both be meaningful comparison regions.
+  - This change improved geometry-only matched regions from 124 to 140, while increasing extras from 154 to 187.
 
 **Failure pattern analysis against current evidence:**
 
-- `missing child region inside broad container`: 128 missed regions.
-- `under-grouped pieces inside human region`: 22 missed regions.
+- `missing child region inside broad container`: 120 missed regions.
+- `under-grouped pieces inside human region`: 23 missed regions.
 - `partial-overlap geometry mismatch`: 20 missed regions.
 - `irregular object or container ROI mismatch`: 8 missed regions.
-- `over-grouped detector region contains human region`: 6 missed regions.
+- `over-grouped detector region contains human region`: 7 missed regions.
 - `missing isolated human region`: 4 missed regions.
 - `internal-gap text/row grouping mismatch`: 2 missed regions.
 - `missing broad container/logical region`: 1 missed region.
 
 **Interpretation of failure patterns:**
 
-The original over-grouping bucket is now clarified into two separate cases. True close-scale over-grouping is down to 6 missed regions. The dominant remaining issue is `missing child region inside broad container`, where the detector has a broad parent/container region but lacks human-comparable child proposals inside it. Supplemental vertical child regions reduced the original over-grouping bucket and improved aggregate alignment from 0.410 to 0.433, but the next detector logic work should target child-region proposal generation inside broad containers, with particular attention to negative-space/text-band cases where the current split choice creates broad dark bands instead of human-comparable content regions.
+The original over-grouping bucket is now clarified into separate cases. The dominant remaining issue is still `missing child region inside broad container`, where the detector has a broad parent/container region but lacks human-comparable child proposals inside it. Supplemental vertical child regions, full-height vertical refinement, nested horizontal-in-vertical refinement, merged nested vertical refinement, negative-space row refinement, finer full-height negative-space column refinement, and parent/child retention improved geometry-only alignment from 0.410 to 0.470. Leave-one-out layout-prior learning with tuned support, occupancy, template-count, and precision gates improves alignment further to 0.476, proving that the evidence repository can teach recurring human region conventions. The detector still cannot yet claim confident evidence alignment because many evidence regions remain missed.
 
 **Files added or changed:**
 
 - `src/evidence/__init__.py`
 - `src/evidence/evaluation.py`
+- `src/evidence/learning.py`
 - `src/spatial/regions.py`
 - `tests/test_evidence_evaluation.py`
 - `reports/evidence_region_evaluation_summary.json`
@@ -1392,15 +1430,19 @@ The original over-grouping bucket is now clarified into two separate cases. True
 **Automated tests:**
 
 - `python -m unittest discover -s tests`
-- Result: passed, 64 tests.
+- Result: passed, 67 tests.
 
 **Interpretation:**
 
-The evidence set is sufficient to guide detector optimization. Parameter tuning alone produced a measurable safe improvement, but many zero-match frames remain. The remaining failures indicate that the current Stage 4 geometry logic lacks a stronger concept of human logical grouping across internal gaps, containers, and irregular animation regions.
+The evidence set is sufficient to guide detector optimization. Parameter tuning and geometry refinement produced measurable safe improvements, and leave-one-out layout-prior learning proves that accumulated evidence can improve future region proposals without using the exact frame being evaluated. Many zero-match or low-match frames remain, so the current detector is not yet confidently aligned with human evidence. The remaining failures indicate that Stage 4 geometry needs stronger child-region proposal logic, especially inside broad containers where the detector still lacks human-comparable child boxes.
 
 **Next recommended work:**
 
-Continue evidence-guided optimization by addressing the highest-impact over-grouping bucket first. Add logic that can propose useful child regions inside broad detector regions while preserving valid nested/container evidence. Accept changes only when aggregate evidence scores improve without breaking locked regression tests.
+Continue evidence-guided optimization by improving the learned-prior selector and child-region proposal logic together. Accept changes only when they improve aggregate evidence scores, reduce missed child regions inside broad containers, and do not increase extra regions enough to lower confidence. The current learned-prior path is validating infrastructure, not a locked final detector.
+
+**Agent workflow rebased - 2026-09-28:**
+
+Future evidence-alignment work must use `AGENT_REGION_EVIDENCE_LOOP.md` before making detector changes. The expected workflow is comparison-first: loop on aggregate evidence evaluation, failure buckets, and simulated candidate strategies; rank which changes offer the best opportunity for improvement; then present findings and request explicit approval before editing detector, evaluator, viewer, or test code. This is intended to avoid expensive patch/test iterations and keep coding changes deliberate.
 
 ---
 

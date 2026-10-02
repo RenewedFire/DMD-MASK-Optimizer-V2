@@ -7,9 +7,13 @@ import unittest
 
 from src.evidence import (
     DetectorOptions,
+    LayoutPriorOptions,
     analyze_failure_patterns,
     evaluate_evidence_export,
+    evaluate_evidence_export_with_layout_prior,
+    optimize_layout_prior_options,
     optimize_detector_options,
+    train_layout_prior_model,
 )
 
 
@@ -122,6 +126,87 @@ class EvidenceEvaluationTests(unittest.TestCase):
 
             self.assertEqual(sum(pattern.count for pattern in patterns), 1)
             self.assertEqual(patterns[0].examples[0]["descriptor"], "single block")
+
+    def test_layout_prior_learns_repeated_logical_region_without_current_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            export_path = Path(tmp) / "evidence.json"
+            payload = _export_payload()
+            pixels = [[0 for _x in range(10)] for _y in range(10)]
+            for y in range(1, 8):
+                for x in range(1, 8):
+                    pixels[y][x] = 3
+            evidence_frame = payload["dumps"][0]["evidence_frames"][0]
+            evidence_frame["frame"]["pixels"] = pixels
+            evidence_frame["frame"]["width"] = 10
+            evidence_frame["frame"]["height"] = 10
+            evidence_frame["frame_width"] = 10
+            evidence_frame["frame_height"] = 10
+            evidence_frame["regions"] = [
+                {"x": 0, "y": 0, "width": 10, "height": 10, "display_order": 0}
+            ]
+            payload["dumps"][0]["evidence_frames"] = [
+                {**evidence_frame, "id": index + 1, "source_frame_index": index}
+                for index in range(6)
+            ]
+            export_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            baseline = evaluate_evidence_export(export_path)
+            learned = evaluate_evidence_export_with_layout_prior(export_path)
+            model = train_layout_prior_model(
+                payload,
+                exclude_frame_ids=(1,),
+                dump_filename="fixture.txt",
+            )
+
+            self.assertGreaterEqual(learned.matched_region_count, baseline.matched_region_count)
+            self.assertEqual(
+                [
+                    (
+                        template.bounding_box.min_x,
+                        template.bounding_box.min_y,
+                        template.bounding_box.max_x,
+                        template.bounding_box.max_y,
+                    )
+                    for template in model.templates
+                ],
+                [(0, 0, 9, 9)],
+            )
+
+    def test_layout_prior_optimizer_reuses_baseline_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            export_path = Path(tmp) / "evidence.json"
+            payload = _export_payload()
+            pixels = [[0 for _x in range(10)] for _y in range(10)]
+            for y in range(1, 8):
+                for x in range(1, 8):
+                    pixels[y][x] = 3
+            evidence_frame = payload["dumps"][0]["evidence_frames"][0]
+            evidence_frame["frame"]["pixels"] = pixels
+            evidence_frame["frame"]["width"] = 10
+            evidence_frame["frame"]["height"] = 10
+            evidence_frame["frame_width"] = 10
+            evidence_frame["frame_height"] = 10
+            evidence_frame["regions"] = [
+                {"x": 0, "y": 0, "width": 10, "height": 10, "display_order": 0}
+            ]
+            payload["dumps"][0]["evidence_frames"] = [
+                {**evidence_frame, "id": index + 1, "source_frame_index": index}
+                for index in range(6)
+            ]
+            export_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            reports = optimize_layout_prior_options(
+                export_path,
+                (
+                    LayoutPriorOptions(),
+                    LayoutPriorOptions(min_support_count=99),
+                ),
+            )
+
+            self.assertGreaterEqual(
+                reports[0].matched_region_count,
+                reports[1].matched_region_count,
+            )
 
 
 if __name__ == "__main__":

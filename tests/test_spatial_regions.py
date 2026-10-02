@@ -199,10 +199,11 @@ class SpatialRegionTests(unittest.TestCase):
 
         refined = refine_spatial_regions(regions, split_evidence)
 
-        self.assertEqual(len(refined), 2)
+        self.assertEqual(len(refined), 3)
         self.assertEqual(refined[0].source_region_id, 0)
         self.assertEqual(refined[0].source_split_id, 0)
-        self.assertEqual(refined[0].refinement_reason, "internal low-occupancy row corridor")
+        self.assertEqual(refined[0].refinement_reason, "retained parent region")
+        self.assertEqual(refined[1].refinement_reason, "internal low-occupancy row corridor")
 
     def test_refined_region_payload_is_inspectable(self) -> None:
         components = find_lit_components(((1, 0, 1),))
@@ -236,7 +237,7 @@ class SpatialRegionTests(unittest.TestCase):
         refined = refine_spatial_regions(regions, split_evidence)
 
         self.assertEqual(len(regions), 2)
-        self.assertEqual(len(refined), 2)
+        self.assertEqual(len(refined), 3)
         self.assertTrue(
             any(
                 region.refinement_reason == "merged stacked contextual row bands"
@@ -261,10 +262,11 @@ class SpatialRegionTests(unittest.TestCase):
 
         refined = refine_spatial_regions(regions, split_evidence)
 
-        self.assertEqual(len(refined), 2)
+        self.assertEqual(len(refined), 3)
+        self.assertIn("retained parent region", {region.refinement_reason for region in refined})
         self.assertEqual(
-            {region.refinement_reason for region in refined},
-            {"negative-space horizontal band"},
+            sum(region.refinement_reason == "negative-space horizontal band" for region in refined),
+            2,
         )
 
     def test_coherent_large_object_is_not_sliced_into_horizontal_bands(self) -> None:
